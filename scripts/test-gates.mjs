@@ -1369,7 +1369,26 @@ gate('refuses 172.16, the first private address in the range', {
 describe('verify — against a fixture site');
 
 const FIXTURE_SITE = join(KIT, 'scripts', 'fixture-site.mjs');
-let fixturePort = 8330;
+
+function availableFixturePort() {
+  const script = [
+    "const net = require('node:net');",
+    "const server = net.createServer();",
+    "server.listen(0, '127.0.0.1', () => {",
+    "  process.stdout.write(String(server.address().port));",
+    '  server.close();',
+    '});',
+  ].join('\n');
+  const run = spawnSync(process.execPath, ['-e', script], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  const port = Number(run.stdout?.trim());
+  if (run.status !== 0 || !Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`could not allocate an ephemeral fixture port: ${(run.stderr ?? '').trim()}`);
+  }
+  return port;
+}
 
 /* The project files verify reads from disk. The served site is the fixture;
    these are what it compares against. */
@@ -1393,17 +1412,21 @@ const VERIFY_FILES = {
  * cannot fail the next with EADDRINUSE.
  */
 function startFixture(faults) {
-  const port = ++fixturePort;
-  const args = [FIXTURE_SITE, '--port', String(port), ...(faults ? ['--faults', faults] : [])];
-  const child = spawn(process.execPath, args, { stdio: 'ignore' });
-  const probe = `fetch('http://127.0.0.1:${port}/__ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))`;
-  for (let i = 0; i < 60; i++) {
-    if (spawnSync(process.execPath, ['-e', probe], { stdio: 'ignore' }).status === 0) {
-      return { child, origin: `http://127.0.0.1:${port}` };
+  let lastPort;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const port = availableFixturePort();
+    lastPort = port;
+    const args = [FIXTURE_SITE, '--port', String(port), ...(faults ? ['--faults', faults] : [])];
+    const child = spawn(process.execPath, args, { stdio: 'ignore' });
+    const probe = `fetch('http://127.0.0.1:${port}/__ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))`;
+    for (let i = 0; i < 60; i++) {
+      if (spawnSync(process.execPath, ['-e', probe], { stdio: 'ignore' }).status === 0) {
+        return { child, origin: `http://127.0.0.1:${port}` };
+      }
     }
+    child.kill('SIGKILL');
   }
-  child.kill('SIGKILL');
-  throw new Error(`fixture-site did not start on ${port}`);
+  throw new Error(`fixture-site did not start on any OS-assigned port (last tried: ${lastPort})`);
 }
 
 /** Strip the colour before looking for a mark, or nothing ever matches. */

@@ -1,0 +1,309 @@
+
+> test:gates
+> node scripts/test-gates.mjs
+
+
+[1m── Gates, in both directions ──────────────────────────────[0m
+
+  [2mcheck-env[0m
+    [32m✓[0m staging build, staging-only route
+    [32m✓[0m production build, staging-only route — must refuse
+    [32m✓[0m production build, production routes with a path
+    [32m✓[0m staging build, production routes — must refuse
+    [32m✓[0m new.example.com does NOT count as production
+    [32m✓[0m PRODUCTION_HOSTS missing — refuses, does not pass
+    [32m✓[0m PRODUCTION_HOSTS empty — refuses, does not pass
+    [32m✓[0m site.ts absent — refuses legibly, no ENOENT stack
+
+  [2mcheck-secrets[0m
+    [32m✓[0m every declared secret is set
+    [32m✓[0m one secret missing — must refuse
+    [32m✓[0m Turnstile secret missing — must refuse
+    [32m✓[0m worker not deployed — nothing to check, not everything missing
+    [32m✓[0m logged out — refuses rather than assume the secrets are fine
+    [32m✓[0m .dev.vars.example absent — refuses
+    [32m✓[0m an old wrangler is told what is actually wrong
+    [32m✓[0m passes --format json, rather than trusting the default
+    [32m✓[0m output it cannot parse is a refusal, not "all secrets missing"
+    [32m✓[0m an empty array is an answer, not an unreadable one
+
+  [2mcheck-sitemap[0m
+    [32m✓[0m no dist — refuses
+    [32m✓[0m no sitemap — staging build, nothing to check
+    [32m✓[0m sitemap and noindex agree
+    [32m✓[0m a listed URL serving noindex — must refuse
+    [32m✓[0m the word "noindex" in prose is NOT a noindex page
+
+  [2mtells --undecided-only[0m
+    [32m✓[0m fresh template — all three placeholders, allowed
+    [32m✓[0m fully decided — no placeholders, allowed
+    [32m✓[0m half-decided — brand set, no typeface — must refuse
+
+  [2mstaging-headers[0m
+    [32m✓[0m production build — refuses, and writes NOTHING
+    [32m✓[0m no _headers yet — refuses
+    [32m✓[0m no /* block to merge into — refuses
+    [32m✓[0m staging — writes the header
+    [32m✓[0m merges into the existing block — security headers survive
+    [32m✓[0m the note is its own line, never inline on the value
+    [32m✓[0m already present — idempotent, exits 0 without a second copy
+    [32m✓[0m dist/_headers, without a client/ subdirectory
+
+  [2mtells — generated-site rows[0m
+    [32m✓[0m two frosted surfaces
+    [32m✓[0m one frosted header is allowed
+    [32m✓[0m three radii at 24px and up
+    [32m✓[0m pills and circles are excluded
+    [32m✓[0m ordinary 8-12px radii
+    [32m✓[0m a zero-offset glow
+    [32m✓[0m a glow as the last declaration
+    [32m✓[0m a focus ring is excluded
+    [32m✓[0m an offset shadow is excluded
+    [32m✓[0m an overshoot easing
+    [32m✓[0m anticipation, y below 0
+    [32m✓[0m a normal ease-out is excluded
+    [32m✓[0m two cards with a side bar
+    [32m✓[0m blockquotes are excluded
+    [32m✓[0m 1px hairlines are excluded
+
+  [2mredirects[0m
+    [32m✓[0m no recon inventory — refuses
+    [32m✓[0m no dist and no host — refuses
+    [32m✓[0m proposes a map from the inventory
+    [32m✓[0m never writes public/_redirects
+
+  [2mextract[0m
+    [32m✓[0m no capture directory — refuses
+    [32m✓[0m a capture directory with no HTML — refuses
+    [32m✓[0m turns captured HTML into markdown
+
+  [2mlastmod[0m
+    [32m✓[0m a shallow clone — refuses rather than dating everything the same
+    [32m✓[0m a committed page takes its commit date
+    [32m✓[0m an uncommitted page is dated today, not its last commit
+
+  [2mog-cards[0m
+    [32m✓[0m the stub config — refuses before generating anything
+
+  [2mbuild[0m
+    [32m✓[0m no environment — refuses
+    [32m✓[0m a misspelled environment — refuses rather than defaulting
+
+  [2mcheck-copy[0m
+    [32m✓[0m the note that shipped: ⚠ CONFIRM in body copy
+    [32m✓[0m a bare TODO in a paragraph
+    [32m✓[0m Lorem ipsum
+    [32m✓[0m an unrendered template placeholder
+    [32m✓[0m a marker inside JSON-LD
+    [32m✓[0m TODO inside an HTML comment
+    [32m✓[0m TODO inside a script
+    [32m✓[0m "confirm your email address"
+    [32m✓[0m lowercase todo, a word in other languages
+    [32m✓[0m acronyms containing TK
+    [32m✓[0m warn mode exits 0 with a marker present
+    [32m✓[0m --strict refuses the same page
+    [32m✓[0m no dist — refuses
+
+  [2mcheck-form[0m
+    [32m✓[0m a clean form passes
+    [32m✓[0m a real field colliding with the honeypot
+    [32m✓[0m a plain duplicate, not the honeypot
+    [32m✓[0m name on a non-control is ignored
+    [32m✓[0m an expression-built name is skipped
+    [32m✓[0m no src — refuses
+
+  [2mcheck:alt[0m
+    [32m✓[0m refuses a filename with an extension
+    [32m✓[0m refuses a camera filename
+    [32m✓[0m refuses a manifest key pasted in
+    [32m✓[0m refuses a word that adds nothing
+    [32m✓[0m refuses a bare "Logo"
+    [32m✓[0m refuses a redundant opening
+    [32m✓[0m refuses two different images sharing one description
+    [32m✓[0m an empty alt is how you say "decorative"
+    [32m✓[0m aria-hidden is not judged
+    [32m✓[0m role=presentation is not judged
+    [32m✓[0m "Screenshot of…" says something "Photo of…" does not
+    [32m✓[0m ONE image used twice shares its alt correctly
+    [32m✓[0m a name that matches a well-chosen filename
+    [32m✓[0m prose that happens to start with "Photo"
+    [32m✓[0m a single lowercase word is not a slug
+    [32m✓[0m a hyphenated word inside a sentence
+    [32m✓[0m an alt that simply describes the picture
+    [32m✓[0m warns without --strict, so a draft can build
+    [32m✓[0m no dist at all refuses legibly
+
+  [2mcheck:contact[0m
+    [32m✓[0m a number that reads as it dials passes
+    [32m✓[0m a UK trunk zero is not a mismatch
+    [32m✓[0m refuses a display and an e164 that are different numbers
+    [32m✓[0m reads an e164 held in a const, not only a literal
+    [32m✓[0m refuses a dial link typed out by hand
+    [32m✓[0m refuses a mailto no display field shows
+    [32m✓[0m a site with no phone block is not a failure
+    [32m✓[0m no business.ts at all refuses legibly
+
+  [2mcoverage ledger[0m
+    [32m✓[0m 28 scripts can exit 1 — 26 covered, 2 accounted for
+
+  [2mrecon — SSRF guard[0m
+    [32m✓[0m no target at all is a usage error
+    [32m✓[0m refuses loopback
+    [32m✓[0m refuses loopback, written short
+    [32m✓[0m refuses loopback, written as an integer
+    [32m✓[0m refuses loopback, written in octal
+    [32m✓[0m refuses loopback over IPv6
+    [32m✓[0m refuses loopback as IPv4-mapped IPv6
+    [32m✓[0m refuses localhost by name
+    [32m✓[0m refuses the cloud metadata address
+    [32m✓[0m refuses an RFC1918 address
+    [32m✓[0m refuses a private 192.168 address
+    [32m✓[0m refuses a non-http protocol
+    [32m✓[0m --allow-internal does not excuse a bad protocol
+    [32m✓[0m refuses 172.16, the first private address in the range
+
+  [2mverify — against a fixture site[0m
+    [32m✓[0m a clean site passes every check
+    [32m✓[0m refuses a route that 404s
+    [32m✓[0m refuses two pages sharing a title
+    [32m✓[0m refuses robots.txt naming no sitemap
+    [32m✓[0m refuses caught spam landing on the conversion URL
+    [32m✓[0m refuses an empty submission accepted
+    [32m✓[0m refuses a cross-origin submission accepted
+    [32m✓[0m refuses a non-string field coerced into a lead
+    [32m✓[0m warns on a second h1, without failing the run
+    [31m✗[0m says nothing about orphans on a site where everything is linked
+      [2mfixture-site did not start on 8340[0m
+    [32m✓[0m warns on a route nothing links to, and names it
+    [32m✓[0m warns when a preserved path lands on the homepage
+    [32m✓[0m recon refuses a redirect it must not follow
+    [32m✓[0m recon does not refuse anything on a clean crawl
+    [32m✓[0m no origin argument is a usage error
+    [32m✓[0m a non-http argument is a usage error
+    [32m✓[0m an unreachable origin stops the run
+
+  [2mbrowser gates — against a fixture site[0m
+    [32m✓[0m a clean site has no console errors and no failed requests
+    [32m✓[0m refuses a script that throws
+    [32m✓[0m refuses an asset that 404s after the page is served
+    [32m✓[0m a clean site reflows at 320px and at 200% text
+    [32m✓[0m refuses a fixed-width element wider than a 320px viewport
+    [31m✗[0m a clean site passes AA in both schemes
+      [2mfixture-site did not start on 8350[0m
+    [32m✓[0m a dark-only contrast failure is invisible in light
+    [32m✓[0m and the two-scheme run refuses it
+    [32m✓[0m the evidence pack records the scheme that failed
+    [32m✓[0m the pack measures ONE origin when no host is given
+    [32m✓[0m captures a page and writes the file
+    [32m✓[0m refuses a capture whose stylesheet never arrived
+    [32m✓[0m shots without --before or --after is a usage error
+
+  [2mmd-to-pdf[0m
+    [32m✓[0m no input file is a usage error
+    [32m✓[0m renders a markdown file to a real PDF
+
+  [2mcheck:cms[0m
+    [32m✓[0m no .pages.yml is not a failure
+    [32m✓[0m a config declaring every key passes
+    [32m✓[0m warns when a collection’s items all sit one level down
+    [32m✓[0m no subdirectory warning once the config points at the right level
+    [32m✓[0m refuses a nested key the schema forgot
+    [32m✓[0m refuses a top-level key the schema forgot
+    [32m✓[0m refuses a collection frontmatter key the schema forgot
+    [32m✓[0m refuses uploads pointed at generated output
+    [32m✓[0m accepts the same source once a picked path can be resolved
+    [32m✓[0m a source at the output is fine when no field stores a picked path
+    [32m✓[0m finds the mapping by its use, not only by that filename
+    [32m✓[0m refuses a manifest key stored in a type: image field
+    [32m✓[0m refuses a picker scoped to a folder that does not exist
+    [32m✓[0m accepts a picker scoped to a folder that exists
+    [32m✓[0m accepts the migrated picker path
+    [32m✓[0m a key declared through a component is not reported
+    [32m✓[0m refuses a block field only a SIBLING variant declares
+    [32m✓[0m accepts a block where each variant declares what it holds
+    [32m✓[0m reads JSON collection items, not only markdown
+    [32m✓[0m honours exclude on a collection
+    [32m✓[0m type-checks an image field reached through a component
+    [32m✓[0m --fix prints nothing unless asked
+    [32m✓[0m --fix infers each type from the value, not the key
+    [32m✓[0m --fix puts a key under the parent field that already exists
+    [32m✓[0m what --fix prints, applied, makes the check pass
+    [32m✓[0m warns about page copy declared inline
+    [32m✓[0m does not report a JSON-LD literal as page copy
+    [32m✓[0m does not report a schema built by a helper as page copy
+    [32m✓[0m does not merge a one-line array into the block that follows it
+    [32m✓[0m refuses a key list offering something the manifest lost
+    [32m✓[0m warns about an image the list cannot reach
+    [32m✓[0m leaves a select that is not a key list alone
+    [32m✓[0m scopes the unlisted half to the prefixes the list already uses
+    [32m✓[0m warns about content no CMS entry points at
+    [32m✓[0m warns about a CMS section the client guide never mentions
+    [32m✓[0m silent once the guide names the section
+    [32m✓[0m warns when a field looks like technical configuration
+    [32m✓[0m refuses a menu item pointing at a page that does not exist
+    [32m✓[0m accepts a menu item pointing at a real page
+    [32m✓[0m a link through a dynamic route is not reported broken
+    [32m✓[0m an external link is left to verify, not guessed at
+    [32m✓[0m refuses a content path that does not exist
+    [32m✓[0m refuses a config that does not parse
+    [32m✓[0m looks inside groups, where PagesCMS nests entries
+
+  [2moptimize-media[0m
+    [32m✓[0m a file it cannot decode fails the run, by name
+    [32m✓[0m a non-raster file is reported, not silently dropped
+    [32m✓[0m a .heic is converted, not silently discarded
+
+  [2mcheck:binary[0m
+    [31m✗[0m a tree of ordinary source files passes
+      [2mexit 1, wanted 0[0m
+    [32m✓[0m names a source file carrying a NUL
+    [31m✗[0m an empty file is not mistaken for a binary one
+      [2mexit 1, wanted 0[0m
+    [32m✓[0m refuses to pass vacuously with no tracked files
+
+  [2mcheck:contrast[0m
+    [32m✓[0m no declaration is not a failure
+    [32m✓[0m a strong scrim survives a hostile frame
+    [32m✓[0m refuses the same frame once the scrim is weakened
+    [32m✓[0m refuses a media-picker path where a manifest key belongs
+
+  [2mcheck:drift[0m
+    [31m✗[0m a site with everything reports no drift
+      [2mexit 0 but did not mention "nothing behind"[0m
+    [32m✓[0m a same-named script that is not this check is not coverage
+    [32m✓[0m finds the check under a name chosen to avoid a collision
+    [32m✓[0m reads the FORMATS declaration, not a comment mentioning avif
+    [32m✓[0m a scheme flag Chrome ignores reads as drift, not as coverage
+    [31m✗[0m a run that does force the scheme is not reported
+      [2mexit 0 but did not mention "nothing behind"[0m
+    [32m✓[0m a site with no pa11y runner is not reported as one scheme short
+    [32m✓[0m an unstamped site is named as such
+    [31m✗[0m the template itself is not a drifted site
+      [2mexit 0 but did not mention "nothing behind"[0m
+    [32m✓[0m finds an image the client cannot change
+    [32m✓[0m refuses a blank image slot the CMS wrote
+    [32m✓[0m reports a blank slot once, not once per image field in the entry
+    [32m✓[0m a record missing only an optional picture is not a blank slot
+    [32m✓[0m accepts a picture that is filled in
+    [32m✓[0m accepts a picture that is simply absent
+    [32m✓[0m a picker reached through a component is not a text box
+    [32m✓[0m still reports a picture stored as a plain string
+    [32m✓[0m finds an image imported statically into a page
+    [32m✓[0m ignores an image import the page never uses
+    [32m✓[0m --json is machine-readable
+
+  [2mcheck:redirects[0m
+    [32m✓[0m no file is not a failure
+    [32m✓[0m accepts a clean file with aligned columns
+    [32m✓[0m refuses a duplicate source
+    [32m✓[0m refuses a self-redirect
+    [32m✓[0m refuses a loop spelled with and without a trailing slash
+    [32m✓[0m a loop is not also reported as a chain
+    [32m✓[0m warns about a chain without failing
+    [32m✓[0m refuses a status Cloudflare does not accept
+    [32m✓[0m a comments-only file is not a failure
+
+[31m✗ 7 of 239 case(s) failed[0m
+
+  A case that wanted exit 1 and got 0 is the serious one: that gate is
+  inert, and every build it has passed since was unchecked.

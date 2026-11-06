@@ -1,0 +1,128 @@
+
+> site-name@1.0.0 build:staging
+> node scripts/build.mjs staging
+
+[2mbuilding staging → https://new.example.com[0m
+
+TAP version 13
+# Subtest: allows an absent Origin and an exact same origin
+ok 1 - allows an absent Origin and an exact same origin
+  ---
+  duration_ms: 0.985202
+  type: 'test'
+  ...
+# Subtest: rejects a different host, scheme, port and malformed Origin
+ok 2 - rejects a different host, scheme, port and malformed Origin
+  ---
+  duration_ms: 0.278528
+  type: 'test'
+  ...
+# Subtest: the published CSP permits the Turnstile iframe and does not block its API script
+ok 3 - the published CSP permits the Turnstile iframe and does not block its API script
+  ---
+  duration_ms: 1.910294
+  type: 'test'
+  ...
+# Subtest: submits only the secret and token, then requires success, hostname and action
+ok 4 - submits only the secret and token, then requires success, hostname and action
+  ---
+  duration_ms: 53.909463
+  type: 'test'
+  ...
+# Subtest: normalizes host case but rejects a different hostname
+ok 5 - normalizes host case but rejects a different hostname
+  ---
+  duration_ms: 1.039242
+  type: 'test'
+  ...
+# Subtest: rejects failed, wrong-action, incomplete and malformed Siteverify responses
+ok 6 - rejects failed, wrong-action, incomplete and malformed Siteverify responses
+  ---
+  duration_ms: 1.920063
+  type: 'test'
+  ...
+# Subtest: rejects absent, whitespace-only and overlong tokens without calling Siteverify
+ok 7 - rejects absent, whitespace-only and overlong tokens without calling Siteverify
+  ---
+  duration_ms: 0.257315
+  type: 'test'
+  ...
+# Subtest: fails closed when the secret is missing, the service fails, or the request times out
+ok 8 - fails closed when the secret is missing, the service fails, or the request times out
+  ---
+  duration_ms: 5.843062
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 235.32443
+[32m✓[0m no duplicate form field names
+[2m·[0m no .pages.yml — no CMS to check
+[1m── Contact details ─────────────────────────────────────────[0m
+  [32m✓[0m (000) 000-0000 dials +00000000000
+[32m✓[0m what the site shows is what it dials
+
+[2m17:37:01[22m [34m[content][39m Syncing content
+[33m[1m17:37:01[22m [WARN] [glob-loader][39m No files found matching "**/*.md" in directory "src/content/legal"
+[33m[1m17:37:01[22m [WARN] [glob-loader][39m No files found matching "**/*.md" in directory "src/content/blog"
+[2m17:37:01[22m [34m[content][39m Synced content
+[2m17:37:01[22m [34m[types][39m Generated [2m1.51s[22m
+[2m17:37:01[22m [34m[build][39m output: [34m"static"[39m
+[2m17:37:01[22m [34m[build][39m mode: [34m"server"[39m
+[2m17:37:01[22m [34m[build][39m directory: [34m/home/ubuntu/work/website-build-kit/template/dist/[39m
+[2m17:37:01[22m [34m[build][39m adapter: [32m@astrojs/cloudflare[39m
+[2m17:37:01[22m [34m[build][39m Collecting build info...
+[2m17:37:01[22m [34m[build][39m [32m✓ Completed in 1.57s.[39m
+[2m17:37:01[22m [34m[build][39m Building server entrypoints...
+[2m17:37:01[22m [34m[vite][39m [32m✓ built in 486ms[39m
+[2m17:37:01[22m [34m[vite][39m [32m✓ built in 293ms[39m
+[2m17:37:01[22m [34m[vite][39m [32m✓ built in 38ms[39m
+
+[42m[30m prerendering static routes [39m[49m
+Unable to fetch the `Request.cf` object! Falling back to a default placeholder...
+TimeoutError: The operation was aborted due to timeout
+    at new DOMException (node:internal/per_context/domexception:76:18)
+    at Timeout._onTimeout (node:internal/abort_controller:155:9)
+    at listOnTimeout (node:internal/timers:585:17)
+    at process.processTimers (node:internal/timers:521:7)
+    at /home/ubuntu/work/website-build-kit/template/node_modules/miniflare/node_modules/undici/index.js:157:7
+    at async setupCf (/home/ubuntu/work/website-build-kit/template/node_modules/miniflare/dist/src/index.js:78794:17)
+    at async #assembleConfig (/home/ubuntu/work/website-build-kit/template/node_modules/miniflare/dist/src/index.js:138603:21)
+    at async #assembleAndUpdateConfigInternal (/home/ubuntu/work/website-build-kit/template/node_modules/miniflare/dist/src/index.js:139014:21)
+    at async #assembleAndUpdateConfig (/home/ubuntu/work/website-build-kit/template/node_modules/miniflare/dist/src/index.js:138996:7)
+    at async /home/ubuntu/work/website-build-kit/template/node_modules/miniflare/dist/src/index.js:137895:7
+    at async Mutex.runWith (/home/ubuntu/work/website-build-kit/template/node_modules/miniflare/dist/src/index.js:80854:16)
+    at async #waitForReady (/home/ubuntu/work/website-build-kit/template/node_modules/miniflare/dist/src/index.js:139210:5)
+    at async _Miniflare.dispatchFetch (/home/ubuntu/work/website-build-kit/template/node_modules/miniflare/dist/src/index.js:139376:5)
+    at async file:///home/ubuntu/work/website-build-kit/template/node_modules/@cloudflare/vite-plugin/dist/index.mjs:56866:19
+✨ Parsed 8 valid redirect rules.
+✨ Parsed 5 valid header rules.
+[2m17:37:05[22m   [34m├─[39m [2m/404.html[22m [2m(+34ms)[22m
+[2m17:37:05[22m   [34m├─[39m [2m/accessibility/index.html[22m [2m(+19ms)[22m
+[2m17:37:05[22m   [34m├─[39m [2m/robots.txt[22m [2m(+15ms)[22m
+[2m17:37:05[22m   [34m├─[39m [2m/rss.xml[22m [2m(+23ms)[22m
+[2m17:37:05[22m   [34m├─[39m [2m/index.html[22m [2m(+15ms)[22m
+[2m17:37:05[22m [32m✓ Completed in 3.97s.
+[39m
+[2m17:37:05[22m [34m[build][39m Rearranging server assets...
+[2m17:37:05[22m [34m[build][39m [32m✓ Completed in 4.87s.[39m
+[2m17:37:05[22m [34m[@astrojs/cloudflare][39m Injected immutable Cache-Control for /_astro/* into _headers.
+[2m17:37:05[22m [34m[build][39m Server built in [1m6.45s[22m
+[2m17:37:05[22m [34m[build][39m [1mComplete![22m
+[32m✓[0m X-Robots-Tag: noindex on every response (staging build)
+[2m  Covers non-HTML, which the meta tag cannot. It is not access control —
+  a crawler still has to fetch the response to read it. See runbook.md §1.[0m
+[32m✓[0m no author notes in the rendered copy
+[1m── Alt text ────────────────────────────────────────────────[0m
+  [2m3 built page(s)[0m
+[32m✓[0m every alt says something
+
+[32m✓[0m PUBLIC_SITE_ENV=staging matches routes: new.example.com
+
+[2msite-name built as staging[0m

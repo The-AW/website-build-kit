@@ -199,7 +199,7 @@ jobs:
       # ⚠ The .gitignore assertion is the load-bearing one. npm strips
       # .gitignore from published packages, so it ships renamed and the CLI
       # restores it — and if that ever breaks, every scaffolded site can commit
-      # its .dev.vars, which holds BREVO_API_KEY and the leads export token.
+      # its .dev.vars, which holds TURNSTILE_SECRET_KEY and LEADS_EXPORT_TOKEN.
       - name: Scaffolder packs and scaffolds
         run: |
           cd create && npm pack --silent && cd ..

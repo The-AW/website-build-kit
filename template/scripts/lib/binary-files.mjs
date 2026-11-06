@@ -66,7 +66,9 @@ const git = (...args) => {
  */
 export function binarySourceFiles() {
   const tracked = git('ls-files', '--', ...SOURCE_GLOBS);
-  const textual = new Set(git('grep', '-I', '-l', '', '--', ...SOURCE_GLOBS));
+  /* `color.ui=always` can decorate paths even when git is not attached to a
+     terminal. Keep grep's path output comparable to `git ls-files`. */
+  const textual = new Set(git('grep', '--no-color', '-I', '-l', '', '--', ...SOURCE_GLOBS));
   const binary = tracked.filter((file) => {
     if (textual.has(file)) return false;
     try {
