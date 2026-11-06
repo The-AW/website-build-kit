@@ -15,7 +15,6 @@ import { env } from 'cloudflare:workers';
 type Bindings = {
   LEADS?: KVNamespace;
   LEADS_STAGING?: KVNamespace;
-  BREVO_API_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;
   LEADS_EXPORT_TOKEN?: string;
 };
@@ -29,7 +28,7 @@ export function kv(name: 'LEADS' | 'LEADS_STAGING'): KVNamespace | undefined {
 }
 
 export function secret(
-  name: 'BREVO_API_KEY' | 'TURNSTILE_SECRET_KEY' | 'LEADS_EXPORT_TOKEN',
+  name: 'TURNSTILE_SECRET_KEY' | 'LEADS_EXPORT_TOKEN',
 ): string | undefined {
   const value = bindings()[name];
   return typeof value === 'string' && value.length > 0 ? value : undefined;

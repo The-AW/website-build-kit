@@ -170,7 +170,8 @@ property or the registrar is a this-week problem, not a launch-day one.
 ● Round 2 — scope, providers, integrations, law.
 
   The starting point, subject to recon and fit:
-    Astro · Worker runtime for the first-party form · PagesCMS · KV · Brevo · Turnstile
+    Astro · Worker runtime for the first-party form · file-based content · Turnstile
+    Email/Slack notification transport: pending owner decision
 
   Where are your customers — country, and any state that matters?
   Public sector, government contract, or federally funded healthcare?
@@ -223,7 +224,8 @@ Nothing already answered by recon gets asked, and it says what it assumed.
 
   Project      Example Plumbing · local services · win = phone call
   Archetype    local services
-  Stack        Astro static pages + Worker contact route · PagesCMS · KV · Brevo
+  Stack        Astro static pages + Worker contact route · file-based content · Turnstile
+  Notifications email/Slack transport pending; no provider or channel selected
   Routes       47 across 6 families
   Features     form + KV + CSV export · areas · blog · sticky call bar
   Design       Editorial · Fraunces + Inter · restrained motion
@@ -256,10 +258,11 @@ is noise nobody reads.
 ## Phase 4 · Build          [in progress]
 
 Gates passed   0 recon ✅  1 extract ✅  2 model ✅  3 tokens ✅
-  Locked         Astro/CF · PagesCMS · Brevo · Turnstile · KV · Editorial · Fraunces+Inter
+  Locked         Astro/CF · file-based content · Turnstile · KV archive · Editorial · Fraunces+Inter
 Archetype      local services
 Compliance     WCAG 2.2 AA · no deadline · CCPA · licence in footer
-Open           ! GA4 property owner unknown — blocks go-live
+Open           ! Email/Slack notification transport pending — blocks go-live
+               ! GA4 property owner unknown — blocks go-live
                ? area page 6 has nothing distinct to say — cut it?
 Next           /services/* (6 of 8 done)
 
@@ -297,49 +300,32 @@ The gates are real stops:
   Browser submit through Turnstile with a fresh token           → 200
   Missing/invalid token                                          → 403, no lead stored
   Bash(npx wrangler kv key list --binding LEADS_STAGING)      → lead:2026-08-02T…
-  Brevo dashboard                                              → delivered 14:22
+  Email/Slack notification transport                            → pending; no delivery asserted
   With JavaScript off, submission                              → rejected; phone/email fallback shown
 
-  Passed. Empty → 422 with field errors, honeypot → silent accept,
-  cross-origin → 403. Turnstile failure never bypasses verification.
+  Form validation/storage checks passed: empty → 422 with field errors,
+  honeypot → silent accept, cross-origin → 403. Turnstile failure never bypasses
+  verification. Go-live remains blocked until notification transport is selected and tested.
 ```
 
 ---
 
 ## Go live
 
-Order matters, and the first three need lead time.
+The example's notification transport is still pending, so **go-live is blocked**. Verify the
+staging build, record the blocker, and stop. Do not deploy to production, cut over traffic or
+change DNS until the owner selects a notification path and a separate rollout is approved.
 
 ```console
-$ # 24h ahead
-$ # TTL → 300s, log in to DNS yourself, move GSC verification to DNS TXT
-
 $ npm run verify -- https://new.example.com
-  ⎿  ✓ 14 checks passed, 2 warnings          ← staging, before touching DNS
-
-$ npm run deploy:production
-  ⎿  Bindings: LEADS (kv, id 3f9a…)   ← read this. It's the only visible signal
-                                          that the right environment was built
-
-$ dig +short example.com www.example.com
-$ npm run verify -- https://example.com
-  ⎿  ✓ 14 checks passed                      ← routes, redirects, headers, the form
-     · What this cannot see: one pageview per visit, a valid submission
-       storing AND emailing, whether the container is the client's own
+  ⎿  ✓ staging checks passed
+     ! Email/Slack notification transport pending — blocks go-live
+     ! No production deploy or DNS change performed
 ```
 
-The last three lines are the point. Do those by hand — a check that stays quiet about its
-blind spots reads as "everything is fine" when it means "everything I looked at".
-
-```
-● Cutover checklist
-
-  [x] staging route removed        (or staging is an indexable duplicate)
-  [x] robots.txt now allows, noindex now absent
-  [x] /sitemap_index.xml → 200     (kept the filename — nothing to resubmit)
-  [x] one real enquiry sent, client confirmed receipt
-  [x] TTL restored, uptime monitor on a real page AND the form endpoint
-```
+Before any later launch, resolve the notification channel, test its failure/recovery path using
+an approved staging destination, obtain separate deployment/DNS approval, and verify the current
+DNS records. A successful staging build does not clear those approvals.
 
 ---
 
@@ -350,7 +336,7 @@ of them is silent.
 
 | When | Watch | Because |
 | --- | --- | --- |
-| Day 1 | Submissions in storage **and** the client's inbox | Silence looks identical to a quiet week. Check before they do |
+| Day 1 | Authorized archive and, only if separately selected, the notification destination | The current starter sends no notification; do not treat storage as an alert |
 | Day 1 | The ten highest-traffic legacy URLs, by hand | A 301 landing on a 404 is invisible until traffic drops |
 | Day 2–3 | Search Console → Pages, and → Sitemaps | "Not indexed" is a canonical fault; "couldn't fetch" is a changed filename |
 | Week 1 | Is analytics recording anything at all | A missing tag and a quiet week look the same in the dashboard |

@@ -1,4 +1,3 @@
 # Copy to .dev.vars for local `wrangler dev`. Never commit the real values.
-BREVO_API_KEY="xkeysib-..."
 TURNSTILE_SECRET_KEY="set-in-local-dev-vars"
 LEADS_EXPORT_TOKEN="a long random string"

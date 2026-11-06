@@ -8,21 +8,15 @@
  * anything, and the first deploy is exactly when a secret has never been set.
  *
  * ── THE FAILURE THIS EXISTS FOR ────────────────────────────────────────────
- * `secret()` in src/lib/runtime.ts returns `undefined` for a binding that was
- * never set. Nothing throws. The contact form still validates, still stores the
- * lead in KV, still returns 200, and still shows the visitor a thank-you.
+ * A missing TURNSTILE_SECRET_KEY prevents server-side Siteverify validation,
+ * so the contact form fails closed; a missing LEADS_EXPORT_TOKEN disables the
+ * protected archive export. Both can be absent from a deployment even when the
+ * build itself passed. This check compares the declared contract with the
+ * deployed worker so the setup gap is caught before a live form is offered.
  *
- * The API says `{"stored":true,"emailed":false}` and nobody reads API responses.
- *
- * So the site captures enquiries and notifies no one. There is no error, no
- * failed request, no console warning, and nothing in the deploy log. It is found
- * weeks later, by someone asking why the phone stopped ringing — and the leads
- * are all still sitting in KV, which is the only reason this is recoverable.
- *
- * ⚠ THIS IS NOT HYPOTHETICAL. It shipped that way on the ochome build: deployed,
- *   verified green by `npm run verify`, storing leads, emailing nothing.
- *   `verify` lists it under "what this cannot see", which is honest and did not
- *   help — a note in a report nobody re-reads is not a gate.
+ * This template has no email or Slack notification transport. The checker does
+ * not configure one and must not imply that a successful form submission alerts
+ * an operator.
  *
  * ── WHAT IT COMPARES ───────────────────────────────────────────────────────
  * `.dev.vars.example` is the declared contract: every secret the code expects,
@@ -176,8 +170,8 @@ if (missing.length) {
   }
   console.error(
     `\n  The deploy succeeded. The site is live and INCOMPLETE — whatever reads\n` +
-      `  these gets \`undefined\` and carries on silently. If BREVO_API_KEY is in\n` +
-      `  the list, the form is storing leads and emailing nobody.\n\n` +
+      `  these gets \`undefined\` and carries on silently. A missing secret can\n` +
+      `  leave a protected feature unavailable without a build-time error.\n\n` +
       `  Set them, then deploy again:\n\n` +
       missing.map((n) => `    npx wrangler secret put ${n}`).join('\n') +
       '\n',

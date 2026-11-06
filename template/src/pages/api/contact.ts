@@ -1,6 +1,5 @@
 import type { APIRoute } from 'astro';
 import { validateLead, leadKey, type LeadRecord } from '../../lib/lead';
-import { notifyTeam } from '../../lib/brevo';
 import { site } from '../../data/site';
 import { kv, secret } from '../../lib/runtime';
 import { verifyTurnstile } from '../../lib/turnstile';
@@ -115,9 +114,9 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
    *
    * ⚠ REFUSE, NEVER COERCE. `String(value)` turns `{"name": {"a": 1}}` into the
    *   string `"[object Object]"`, which is 15 characters long and therefore
-   *   PASSES the name rule — so the lead is stored in KV and emailed to the
-   *   client with a nonsense name. That trades a loud 500 for a silent bad
-   *   record, which is the worse half of the trade everywhere else in this kit.
+   *   PASSES the name rule — so the lead is stored in KV with a nonsense name.
+   *   That trades a loud 500 for a silent bad record, which is the worse half
+   *   of the trade everywhere else in this kit.
    *
    * ⚠ AND IT RUNS AFTER THE HONEYPOT, deliberately. A submission the honeypot
    *   CATCHES has already left by the quiet door — 303 to the form page, or a
@@ -183,52 +182,14 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     ip: clientAddress ?? '',
   };
 
-  // ── Durable first, third party second ──────────────────────────────────
-  // The KV write happens BEFORE the Brevo call, so a provider outage costs a
-  // notification rather than a lead. If KV itself fails we still try to send,
-  // because an email in an inbox beats losing the enquiry entirely.
+  // ── Archive only; notification transport is pending owner decision ──────
+  // The starter deliberately has no email or Slack adapter. A success here
+  // means the lead was stored; it does not mean anyone was notified. The AW
+  // launch checklist blocks production until an owner-selected channel and its
+  // recovery path have been implemented and tested.
   const store = kv(site.leadsBinding);
-
-  let stored = false;
-  if (store) {
-    try {
-      /*
-       * `expirationTtl` is the retention policy, enforced by the store. See
-       * site.leadRetentionDays — without it KV keeps a lead forever, which is
-       * not a defensible answer to "how long do you hold this data".
-       *
-       * Metadata carries NO personal data. It used to duplicate name and email
-       * here, which put them in `list()` — an operation that returns metadata
-       * without reading values, so the PII was available through the cheaper
-       * call. Nothing consumed it: the CSV export does a `get()` per key and
-       * reads the full record. Duplicated personal data with no reader is all
-       * cost and no benefit.
-       */
-      await store.put(leadKey(receivedAt, id), JSON.stringify(lead), {
-        expirationTtl: site.leadRetentionDays * 24 * 60 * 60,
-        metadata: { env: lead.env },
-      });
-      stored = true;
-    } catch (error) {
-      console.error('lead kv write failed', { id, error: String(error) });
-    }
-  } else {
+  if (!store) {
     console.error('lead kv binding missing', { binding: site.leadsBinding });
-  }
-
-  let emailed = false;
-  const apiKey = secret('BREVO_API_KEY');
-  if (apiKey) {
-    const result = await notifyTeam(apiKey, lead);
-    emailed = result.ok;
-    if (!result.ok) console.error('lead email failed', { id, error: result.error });
-  } else {
-    console.error('BREVO_API_KEY not set');
-  }
-
-  // Only a total loss is reported as failure to the visitor. If either channel
-  // captured it, the enquiry reached us and the visitor should not retry.
-  if (!stored && !emailed) {
     if (wantsHtml(request)) return seeOther(`${FORM_PAGE}?failed=1${FORM_ANCHOR}`);
     return json(
       {
@@ -242,8 +203,33 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     );
   }
 
+  try {
+    /*
+     * `expirationTtl` is the retention policy, enforced by the store. See
+     * site.leadRetentionDays — without it KV keeps a lead forever, which is
+     * not a defensible answer to "how long do you hold this data".
+     *
+     * Metadata carries no personal data. The CSV export reads the record value
+     * by key; there is no need to duplicate PII in list metadata.
+     */
+    await store.put(leadKey(receivedAt, id), JSON.stringify(lead), {
+      expirationTtl: site.leadRetentionDays * 24 * 60 * 60,
+      metadata: { env: lead.env },
+    });
+  } catch (error) {
+    console.error('lead kv write failed', { id, error: String(error) });
+    if (wantsHtml(request)) return seeOther(`${FORM_PAGE}?failed=1${FORM_ANCHOR}`);
+    return json(
+      {
+        ok: false,
+        error: `We could not record your request. Please call us at ${business.phone.display}.`,
+      },
+      502,
+    );
+  }
+
   if (wantsHtml(request)) return seeOther(SUCCESS);
-  return json({ ok: true, id, stored, emailed }, 200);
+  return json({ ok: true, id, stored: true, notification: 'pending' }, 200);
 };
 
 /** A GET here is almost always a person pasting the URL. Send them to the form. */

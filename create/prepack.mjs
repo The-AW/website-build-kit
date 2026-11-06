@@ -8,7 +8,7 @@
  * ── npm STRIPS .gitignore FROM PUBLISHED PACKAGES ──────────────────────────
  * Long-standing, documented npm behaviour and the reason every scaffolding tool
  * carries this workaround. It is not cosmetic here: the template's .gitignore
- * is what keeps `.dev.vars` — the file holding BREVO_API_KEY and the leads
+ * is what keeps `.dev.vars` — the file holding the Turnstile secret and leads
  * export token — out of the repository. A scaffolded site without it invites
  * the first `git add -A` to commit live secrets, and nothing would report it.
  *

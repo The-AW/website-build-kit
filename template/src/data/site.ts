@@ -6,8 +6,6 @@
  * it, so there is nothing a human has to remember to change at go-live.
  */
 
-import { business } from './business';
-
 export type SiteEnv = 'development' | 'staging' | 'production';
 
 export const SITE_ENV = (import.meta.env.PUBLIC_SITE_ENV ?? 'development') as SiteEnv;
@@ -90,11 +88,10 @@ export const site = {
    * forever unless it is told otherwise, so the default without this line is
    * exactly the thing that cannot be justified.
    *
-   * 180 days is the kit's default because this store is a SAFETY NET, not the
-   * system of record: the notification email is the delivery, and KV exists so
-   * that a provider outage costs a notification rather than the lead. Six
-   * months is long enough to recover from an outage nobody noticed and to run
-   * an export, and short enough to state plainly in a privacy notice.
+   * 180 days is a starter value for the configured archive, not a universal
+   * retention policy. The contact handler currently requires KV storage; if an
+   * owner decides not to retain submissions, change that flow deliberately and
+   * update its tests. No email or Slack notification transport is configured.
    *
    * ⚠ Raise it only with a reason you would give a regulator, and make sure the
    * privacy notice says the same number. Staging is deliberately shorter — test
@@ -102,12 +99,6 @@ export const site = {
    */
   leadRetentionDays: isProduction ? 180 : 30,
 
-  /**
-   * Who gets the new-lead notification. Off production it goes to the
-   * developer, not the client — a verification run should never land in the
-   * inbox someone answers real enquiries from.
-   */
-  leadNotifyTo: isProduction ? business.email.notify : business.email.notifyTest,
 } as const;
 
 /**

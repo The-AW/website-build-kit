@@ -89,10 +89,13 @@ server models none of them, and they are exactly where things break.
 ## Secrets
 
 ```bash
-npx wrangler secret put BREVO_API_KEY
 npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put LEADS_EXPORT_TOKEN     # openssl rand -base64 32
 ```
+
+The starter stores validated submissions in KV but sends no email or Slack notifications. No
+notification provider or channel is selected; resolve that owner decision and test the recovery
+path before using the form in production.
 
 Set the public `PUBLIC_TURNSTILE_SITE_KEY` in the build environment and configure the Turnstile
 widget's allowed hostnames. It is embedded in the page and is not a secret; never expose the

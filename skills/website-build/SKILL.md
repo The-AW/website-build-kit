@@ -44,7 +44,7 @@ npx pa11y-ci --sitemap https://site.com/sitemap.xml --standard WCAG2AA
 returns the page — mandatory for JS-rendered sources (Wix, Framer), and the only way to see
 whether a page *looks* right. `stacks.md` §1c.
 
-1. **URLs and template families** — *"15 URLs, 5 families, a form posting to Brevo"* beats
+1. **URLs and template families** — *"15 URLs, 5 families, a form posting to an existing third-party endpoint"* beats
    twenty questions. Identify the builder first (`stacks.md` §1); **for any page builder the
    answer is rendered HTML, never the database.** Pull the SEO plugin export too — titles,
    redirect table with hit counts, business facts.
@@ -61,10 +61,10 @@ open-ended "what look do you want?".
 
 - **Round 1** — business, and *the one action that counts as a win*. Name one. It settles
   every later layout argument.
-- **Round 2** — scope, content, integrations, and the provider decisions (each has a default,
-  so ask only where the default may not hold). **Two rows have no default and are always asked:
-  who edits the site after launch, and who holds DNS.** Neither is inferable from a crawl, and
-  skipping the first ships markdown-in-git to a client who cannot use it.
+- **Round 2** — scope, content, integrations and provider decisions. Use approved defaults where
+  they exist; record pending owner decisions explicitly. Always ask who will maintain the
+  file-based content and who holds DNS; email/Slack notification transport is pending and must
+  be selected before production.
 - **Round 3** — design direction and mobile. This is the round that decides whether the
   result looks premium. Offer named directions and specific font pairings.
 
@@ -108,14 +108,14 @@ deleted.
 
 Astro, static-first, for content-first sites that fit → Workers Static Assets for a static-only
 build (no adapter, Worker script or runtime bindings) → add a Worker runtime and the supported
-Astro adapter only for server routes, on-demand rendering or bindings → PagesCMS for owner-editable
-content, with a site-specific `.pages.yml` → first-party form endpoint with Turnstile validated by
-server-side Siteverify → Brevo email notifications by default, with Slack only as an explicitly
-approved additional or alternative channel. Do not use LeadConnector. Astro/Workers is conditional,
-not a blanket mandate. The generic starter integrates Turnstile and Brevo but ships no PagesCMS
-schema and lacks request rate limiting, a body-size cap, duplicate protection, Slack delivery and
-durable notification recovery; close those gaps before production use. See `references/stacks.md`
-and the AW process docs below.
+Astro adapter only for server routes, on-demand rendering or bindings → file-based content in the
+site's own repository; no CMS is selected (EmDash is a future possibility only) → first-party form
+endpoint with Cloudflare Turnstile validated by server-side Siteverify → email/Slack notification
+transport pending; no provider or channel selected. Do not use LeadConnector. Astro/Workers is
+conditional, not a blanket mandate. The generic starter integrates Turnstile and archives leads
+in KV, but sends no email or Slack notifications; it also lacks request rate limiting, a body-size
+cap, duplicate protection and durable notification recovery. Resolve the notification decision and
+close the launch gaps before production use. See `references/stacks.md` and the AW process docs below.
 
 ## Non-negotiables
 
@@ -132,14 +132,15 @@ These are not style preferences. Each prevents a specific, expensive failure.
   showing anyone a page — `design.md` §3, checked mechanically.
 - **One place per concern.** Business facts in one file, read by both the UI and the
   structured data, so the page and the schema cannot disagree.
-- **Environment derived from one build variable** — noindex, analytics, canonical host, which
-  store leads land in, who gets notified. Nothing toggled by hand at go-live. Detect
-  production by an exact hostname allowlist; `new.example.com` ends with `example.com`.
+- **Environment derived from one build variable** — noindex, analytics, canonical host and which
+  store leads land in. No notification recipient is configured. Nothing toggled by hand at go-live.
+  Detect production by an exact hostname allowlist; `new.example.com` ends with `example.com`.
 - **Make the wrong build impossible.** A bare CI build with no environment set publishes
   `localhost` canonicals, cleanly and with no error. Throw at config time.
-- **Durable storage before any third-party call** on form submissions. A provider outage
-  should cost a notification, not a lead.
-- **Progressive enhancement.** The page renders and the form submits with JavaScript off.
+- **Do not imply an alert exists when none is selected.** The starter archives leads in KV and
+  sends no email/Slack notification; production use requires an owner-selected and tested path.
+- **Progressive enhancement.** Content pages render without JavaScript; the contact form fails
+  closed when Turnstile is unavailable and offers the published phone/email fallback.
   Anything that hides an element must be the same thing that reveals it.
 - **Build to WCAG 2.2 AA regardless of what binds them.** Superset of 2.1 and 2.0, so one
   target covers every jurisdiction. Nearly free at build time, several times the cost as a

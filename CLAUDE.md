@@ -116,7 +116,7 @@ grep -rnoE "'[A-Za-z]+/[A-Za-z_]+'" src/lib src/data              # a hardcoded 
 name-based grep had been passing for months.** `HVACBusiness` was hardcoded in the
 organisation schema for two projects, so every site built from the template declared itself a
 heating company to Google. The lead-notification email carried a green palette and
-`America/Los_Angeles` — so every enquiry was stamped in a previous client's timezone, which is
+`America/Los_Angeles` in an earlier implementation — so every enquiry was stamped in a previous client's timezone, which is
 a plausible wrong time nobody re-reads.
 
 **Then check for a client's data as a *directory*, not a string.** Every grep above reads
@@ -264,7 +264,7 @@ cd create && npm publish        # prepack copies template/, postpack removes it
 
 **npm strips `.gitignore` from published packages.** It ships as `gitignore` and the CLI renames
 it back. That is not cosmetic: the template's `.gitignore` is what keeps `.dev.vars` — holding
-`BREVO_API_KEY` and the leads export token — out of the repository. `prepack` refuses to pack if
+`TURNSTILE_SECRET_KEY` and the leads export token — out of the repository. `prepack` refuses to pack if
 `.dev.vars`, `node_modules` or `dist` reach the staging copy, and the CLI exits rather than leave
 a scaffolded site without a `.gitignore`.
 
@@ -429,23 +429,22 @@ own `README.md`, persistent `CLAUDE.md`, content, assets, configuration and secr
 client-specific URLs, content, screenshots, analytics IDs, credentials or form submissions in
 this public kit.
 
-For AW sites, PagesCMS is the selected CMS default for owner-editable content; configure a
-site-specific `.pages.yml` after auditing the content model. A no-CMS exception must be documented
-when no ongoing editorial editing is needed. Cloudflare EmDash is a future evaluation only. Astro
-with Cloudflare Workers is a conditional starting point for content-first sites that fit. A
-static-only build can deploy `dist/` as Workers Static Assets without an Astro adapter, Worker
-script or runtime bindings; server routes, on-demand rendering and bindings require a Worker runtime
-and the supported Astro adapter. Recheck the official Astro/Cloudflare guide for each project.
+For AW sites, content stays in version-controlled files; no CMS is selected and no PagesCMS
+configuration should be added. Cloudflare EmDash is a future possibility only, not a current
+integration. Astro with Cloudflare Workers is a conditional starting point for content-first sites
+that fit. A static-only build can deploy `dist/` as Workers Static Assets without an Astro adapter,
+Worker script or runtime bindings; server routes, on-demand rendering and bindings require a Worker
+runtime and the supported Astro adapter. Recheck the official Astro/Cloudflare guide for each
+project.
 
-Do not use LeadConnector for contact forms. Use a source-controlled same-origin endpoint with
-Cloudflare Turnstile and server-side Siteverify validation. Brevo is the selected AW email
-notification default; Slack may be added as an explicitly approved channel. The generic template
-now supports Turnstile and Brevo, but lacks request rate limiting, a total body-size cap, duplicate
-protection, Slack delivery, durable notification retry and alerting; close those gaps before
-production use. Cloudflare Email Routing is inbound; Email Service Email Sending is a researched
-Beta alternative with plan, recipient and DNS limits, not the AW default. No DNS/MX change is
-automatic; capture records read-only and get separate approval before changing production mail flow
-or deploying.
+Do not use LeadConnector for contact forms. Cloudflare Turnstile with server-side Siteverify is
+the selected anti-bot protection. Email and Slack notification transport remains pending: no
+provider or channel is selected, and the generic template archives leads in KV but sends no
+notifications. Do not add Brevo as a default or enable a live form until the owner selects and
+tests a notification path. The template also lacks request rate limiting, a total body-size cap,
+duplicate protection and durable notification recovery; close those gaps before production use.
+No DNS/MX change is automatic; capture records read-only and get separate approval before changing
+production mail flow or deploying.
 
 Use [`docs/aw-migration-process.md`](docs/aw-migration-process.md) for the reusable method and
 [`docs/aw-migration-checklist.md`](docs/aw-migration-checklist.md) for each site's copy.

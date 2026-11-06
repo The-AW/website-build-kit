@@ -430,7 +430,7 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? ''
 
         form.reset();
         resetTurnstile();
-        say('Thank you — your message is in. We will come back to you shortly.', 'success');
+        say('Thank you — your request has been recorded.', 'success');
         announceLead();
       } catch {
         resetTurnstile();

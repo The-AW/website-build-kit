@@ -99,18 +99,19 @@ docs/                          runbook, content, traps, analytics, handover
 ## The parts worth understanding before changing
 
 **`src/data/site.ts`** — everything environment-dependent derives from `PUBLIC_SITE_ENV`:
-indexability, analytics, canonical host, which KV namespace leads land in, who gets notified,
-and how long a lead survives. There is deliberately no second switch. If you find yourself
-adding one, put it here instead.
+indexability, analytics, canonical host, which KV namespace leads land in, and how long a lead
+survives. No email/Slack notification recipient is configured. There is deliberately no second
+switch. If you find yourself adding one, put it here instead.
 
 **`src/pages/api/contact.ts`** — the route is first-party, validates the Turnstile token through
-Siteverify, and writes to KV *before* Brevo. The cross-origin refusal runs *before* validation, and
+Siteverify, and stores a lead in KV when the binding is configured. No email or Slack notification
+transport is selected or configured; the owner decision remains pending. The cross-origin refusal runs *before* validation, and
 the honeypot must **not** redirect to the success URL. Field limits are checked only after parsing;
 this generic starter has no total request-body cap, request rate limiter, duplicate/idempotency
-protection, Slack adapter, durable notification retry or delivery alert. If KV succeeds and Brevo
-fails, the visitor still sees success and only a Worker log records the delivery error. With
-JavaScript disabled or verification unavailable, the form fails closed and the published phone and
-email details are the fallback; no request bypasses Turnstile.
+protection or durable notification recovery. Success means the lead was archived, not that anyone
+was notified. Do not use the starter form in production until a notification path is selected and
+tested. With JavaScript disabled or verification unavailable, the form fails closed and the
+published phone and email details are the fallback; no request bypasses Turnstile.
 
 The default CSP explicitly permits Turnstile's iframe and intentionally does not restrict scripts.
 If a project adds an effective `script-src` or `default-src`, allow `https://challenges.cloudflare.com`
@@ -202,10 +203,8 @@ where you look at half-finished work.
 - Card, band and grid styles — `global.css` carries states, not a look
 - A brand overlay / preloader — a measured ~160ms of LCP, so a decision, not a default
 - Page layouts beyond a contact page
-- A PagesCMS config — PagesCMS is the selected AW CMS default for owner-editable content, but this
-  generic starter does not ship a site-specific `.pages.yml`. Add and test the configuration after
-  auditing the actual content model; record a no-CMS exception only when there is no ongoing
-  editorial editing need. Cloudflare EmDash is a future evaluation only, not a current dependency.
+- A CMS — content stays in version-controlled files; no CMS is selected and no `.pages.yml` should
+  be added. Cloudflare EmDash is a future possibility only, not a current dependency.
 - Any legal *content* — `src/content/legal/` ships the route, the schema and the footer
   wiring, and not one word of a policy. Nobody should inherit a privacy notice
 - Testimonials, pricing, galleries — project-shaped, not skeleton-shaped
@@ -228,8 +227,8 @@ where you look at half-finished work.
 - [ ] `src/data/site.ts` — `PRODUCTION_HOSTS`, the client's **own** analytics IDs (or empty),
       and `leadRetentionDays` matching the privacy notice. `check-env.mjs` reads
       `PRODUCTION_HOSTS` from here, so this is the only place the production hostname is written
-- [ ] PagesCMS `.pages.yml` mapped to the audited content/media model; declare every field the CMS
-      can rewrite and run `npm run check:cms` before giving editors access
+- [ ] Content and schemas remain in version-controlled files in the site's repository; document
+      the authorized editing/review workflow without adding a CMS
 - [ ] Category slugs match the source CMS exactly, if this is a migration
 - [ ] `wrangler.jsonc` — worker name, real KV ids, your staging hostname
 - [ ] `scripts/build.mjs` — `SITE_URLS`, the staging and production hostnames
@@ -250,17 +249,18 @@ where you look at half-finished work.
       environment and `TURNSTILE_SECRET_KEY` as a Worker secret; register the exact hostnames and
       test Siteverify success, invalid/expired/replayed tokens and service outage. The production
       build refuses a missing public key; add a request rate limiter before launch.
-- [ ] Use Brevo for email notifications by default; keep `BREVO_API_KEY` in Worker secrets, verify
-      the sender, and route staging submissions to the test recipient. Add Slack only if approved;
-      secure its webhook URL and use a separate staging channel. Implement durable retry or alerting
-      for partial delivery failures before launch.
+- [ ] Email/Slack notification transport is pending: no provider or channel is selected or
+      configured. Obtain an explicit owner decision on the channel, destination, fields shared,
+      retention, failure/retry and accountable operator before production; do not add Brevo by default.
+- [ ] The generic template archives leads in KV but sends no notification. A successful form
+      response means the record was stored, not that anyone was alerted; do not launch until the
+      selected notification path and recovery behavior are implemented and tested.
 - [ ] Update the privacy notice and retention/deletion rules for the form fields, Turnstile,
-      archive, email/Slack recipients and third-party copies. KV expiry does not expire those copies.
+      archive and any later-approved email/Slack recipients or third-party copies. KV expiry does not
+      expire those copies.
       If Invisible Turnstile mode is selected, include Cloudflare's [Privacy Addendum](https://developers.cloudflare.com/turnstile/concepts/widget/).
-- [ ] Treat Cloudflare Email Service Email Sending as a researched Beta alternative only; use it
-      only after an explicit owner decision to replace Brevo. Email Routing is inbound-only and
-      changes root MX records.
-- [ ] Verified sender at the selected provider, SPF + DKIM + DMARC; review before any DNS change
+- [ ] If a provider is selected later, verify its sender, recipients and staging behavior. Email
+      Routing is inbound-only and changes root MX records; no DNS or mail-flow change is implied.
 - [ ] `LEADS_EXPORT_TOKEN` set only if a protected export route is actually used
 - [ ] `src/pages/accessibility.astro` — dates, known gaps, a contact route that works
 - [ ] `.pa11yci.json` — a URL for every template family
@@ -268,7 +268,7 @@ where you look at half-finished work.
 - [ ] `npm run lastmod`, committed alongside the content it dates
 - [ ] Set staging `PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`, then run
       `npm run test:form` and `npm run build:staging && npx wrangler dev` — submit through the
-      widget, check KV and the staging inbox
+      widget and verify the KV archive; test a notification destination only after it is selected
 - [ ] `npm run verify -- https://new.example.com` green
 - [ ] `npm run a11y` and `npm run reflow` clean, plus a keyboard pass by hand
 - [ ] www → apex redirect as a Cloudflare Single Redirect — see `runbook.md` §3a

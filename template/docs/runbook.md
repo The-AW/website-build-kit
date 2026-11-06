@@ -46,11 +46,13 @@ npx wrangler kv namespace list        # confirm both exist with ids
 **Secrets.** Never in the repo, never in chat.
 
 ```bash
-npx wrangler secret put BREVO_API_KEY
 npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put LEADS_EXPORT_TOKEN     # openssl rand -base64 32
 cp .dev.vars.example .dev.vars                 # local only, gitignored
 ```
+
+The starter has no email or Slack notification transport configured. No provider is selected;
+resolve the owner decision and test delivery/recovery before using the form in production.
 
 `PUBLIC_TURNSTILE_SITE_KEY` is a public build-time value, not a secret. Set it in the Cloudflare
 Workers Builds environment, or in the shell for a local production build, and configure the
@@ -240,7 +242,7 @@ Every row was measured from a real build of each environment, not recalled:
 | Lead storage | `LEADS_STAGING` binding | `LEADS` binding |
 | Lead tag on each record | `test` | `live` |
 | Lead retention | 30 days | 180 days |
-| Enquiry notification goes to | `email.notifyTest` — the developer | `email.notify` — the client |
+| Enquiry notification | None configured; transport decision pending | None configured; select and test before launch |
 | Build gates that run | `check-env`, `staging-headers` | `tells`, `astro check`, `check-env`, `check-sitemap` |
 
 Two consequences worth stating plainly, because they surprise people:
@@ -249,8 +251,9 @@ Two consequences worth stating plainly, because they surprise people:
   off — the HTML contains no tag at all. A staging visit cannot pollute the client's data even
   if someone pastes a container ID in by mistake, because the block that would render it never
   runs.
-- **Staging never emails the client.** Submissions store and notify, but to the developer
-  address. That is what makes it safe to test the form end to end without warning anyone.
+- **No environment sends email or Slack messages.** A successful form response means a lead was
+  stored in KV; it does not notify an operator. Do not use the form in production until the owner
+  selects and tests a notification transport and recovery path.
 
 ### Going live: what you change, and what changes itself
 
@@ -295,16 +298,17 @@ land on the conversion URL.
 
 It reads `public/_redirects` and the deployed sitemap rather than a list inside the script, so
 it cannot drift from the site the way this document did: **the honeypot row below tested
-`website=filled` while the code checked `company`, so for a long time it posted a complete
-valid lead, stored it, emailed it, and reported success.** That is what a hand-run checklist
-degrades into. Run the script; keep the commands below for when you need to see one by hand.
+`website=filled` while the code checked `company`, so a historical version posted a complete
+valid lead and its notification adapter sent it before reporting success. The current starter has
+no email/Slack adapter.** That is what a hand-run checklist degrades into. Run the script; keep
+the commands below for when you need to see one by hand.
 
 **What the script cannot see**, and you must still do:
 
 | Check | Why it stays manual |
 | --- | --- |
 | One pageview per visit | Only visible in analytics Realtime |
-| A valid submission stores **and** emails | Sending one creates a real lead and a real notification |
+| A valid submission stores a lead | Verify KV/archive behavior with staging data; no notification is configured |
 | **Data the client may not hold is dropped** | Only if `compliance.md` §10 named something — PHI, GDPR special categories, card numbers. Craft a submission containing exactly it, send it, then read the stored record back. The form not *asking* is not the control; the message box accepts anything. `verify` cannot do this: it would need the export token and the record schema |
 | The analytics container is the client's own | Fetch `gtm.js` and read it — see `analytics.md` |
 | A redirect lands on the **right** page | The script proves it resolves, not that it is correct |
@@ -370,16 +374,16 @@ curl -s "https://$STAGING/robots.txt"                                           
 curl -s "https://$STAGING/" | grep -c "$PROD"                                   # must be 0
 ```
 
-Zero analytics references, `noindex`, disallow-all robots, no production URLs, and
-notifications routed to the developer rather than the client.
+Zero analytics references, `noindex`, disallow-all robots, no production URLs, and no
+email/Slack notification destination configured.
 
 ### Forms
 
 ```bash
-# valid → 200, a stored record AND a delivered Brevo email. Complete the real
-# staging widget in a browser; its token is short-lived and single-use.
+# valid → 200, a stored record. No email/Slack notification is configured.
+# Complete the real staging widget in a browser; its token is short-lived and single-use.
 
-# fields without a token → 403, no lead stored or notification sent
+# fields without a token → 403, no lead stored
 curl -s -X POST "https://$STAGING/api/contact/" -H "Origin: https://$STAGING" \
   -d 'name=Test&phone=5550000000&email=you@example.com&message=missing-token'
 
@@ -390,8 +394,8 @@ curl -s -X POST "https://$STAGING/api/contact/" -H "Origin: https://$STAGING" -d
 #
 # ⚠ THE FIELD NAME MUST MATCH src/pages/api/contact.ts. This row read
 # `website=filled` while the code checked `company` — so it posted a complete,
-# valid lead with an unrecognised extra field, stored it, sent the notification,
-# and reported success. A verification row that quietly does the opposite of
+# valid lead with an unrecognised extra field and, in that historical version,
+# stored it, sent a notification, and reported success. A verification row that quietly does the opposite of
 # what it claims is worse than an unchecked box. Grep the code, do not trust
 # this line.
 curl -s -o /dev/null -D- -X POST "https://$STAGING/api/contact/" -H "Origin: https://$STAGING" \
@@ -411,8 +415,9 @@ npx wrangler kv key list --binding LEADS_STAGING | tail -5
 curl -s -H "Authorization: Bearer $LEADS_EXPORT_TOKEN" "https://$STAGING/api/leads.csv" | tail -3
 ```
 
-…and that the email actually arrived, in the provider's dashboard. A 200 from a transactional
-API means accepted for delivery, not delivered.
+The generic starter sends no email/Slack notification. Confirm the archive through KV or the
+protected export. If an owner later selects a notification channel, add channel-specific delivery,
+failure and recovery checks using an approved staging destination.
 
 **Then with JavaScript off.** Turnstile requires its client script, so the form must fail closed;
 verify it does not store or notify without a token and that the page shows the phone/email

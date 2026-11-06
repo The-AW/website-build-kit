@@ -99,9 +99,9 @@ The skill loads these as needed rather than all at once.
 ```
 Astro when the site fits → Workers Static Assets for a static-only build (no adapter or Worker script)
 → add a Worker runtime and Astro adapter only for server routes, on-demand rendering or bindings
-→ PagesCMS for owner-editable content, stored in the site's own repository
+→ file-based content in the site's own repository; no CMS is selected (EmDash is a future possibility only)
 → first-party form endpoint with Turnstile + server-side Siteverify
-→ Brevo email notifications by default, with an owner-approved Slack channel if needed
+→ email/Slack notification transport pending; no provider or channel selected
 ```
 
 This is conditional, not a one-size-fits-all mandate. A static-only Astro site can deploy `dist/`
@@ -109,12 +109,11 @@ as Workers Static Assets without an Astro adapter, Worker script or runtime bind
 form endpoint or other server route needs a runtime; use the supported adapter for Astro routes and
 bindings. Recheck the official [Astro Cloudflare integration](https://docs.astro.build/en/guides/integrations-guide/cloudflare/)
 and [Cloudflare Workers Astro guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/astro/)
-for each project. The generic template includes a runtime contact route, Brevo email and a
-Turnstile widget with mandatory server-side Siteverify; its `.pages.yml` must be created for each
-site's content model. It still lacks request rate limiting, Slack delivery, durable notification
-retry and alerting. PagesCMS and Brevo are the selected AW defaults. Cloudflare Email Service Email
-Sending is a researched Beta alternative only; Email Routing is inbound mail, not a form sender.
-See the [AW migration process](docs/aw-migration-process.md).
+for each project. The generic template uses file-based content, has no CMS configuration, and
+validates Turnstile server-side. It archives leads in KV but sends no email or Slack notification;
+the notification transport is pending and must be selected and tested before production use. The
+template also lacks request rate limiting, a total body-size cap, duplicate protection and durable
+notification recovery. See the [AW migration process](docs/aw-migration-process.md).
 
 ## The template
 
@@ -133,14 +132,14 @@ does ship is the skeleton of the parts that take longest to get right:
   ring, raw hex in components. No browser, so it runs in CI. `build:production` refuses while
   anything is left undecided
 - **Form endpoint** — first-party server-side validation, Turnstile/Siteverify, a honeypot and KV
-  written **before** Brevo is called. This generic starter still has no total request-body cap,
-  request rate limiter, duplicate protection, Slack adapter or durable notification retry/alert;
-  add and test those before an AW production form goes live. `npm run test:turnstile` covers token,
+  lead archive. The starter sends no email or Slack notifications; select and test a transport
+  before production. It also has no total request-body cap, request rate limiter, duplicate
+  protection or durable notification recovery. `npm run test:turnstile` covers token,
   hostname, action, failure and timeout handling; `npm run test:origin` covers exact-origin checks.
   `npm run test:form` runs both suites manually, and both also gate every build
 - **Token-protected CSV export** of leads
 - **Environment derivation** — one build variable decides noindex, analytics, canonical host,
-  which store leads land in, and who gets notified
+  and which store leads land in; no notification recipient is configured
 - **Build guard** that refuses *any* build without an environment, because a bare build
   publishes `localhost` canonical tags cleanly and with no error. It keys on the command, not
   on `CI` — `npm run build` is the most reflexive command in npm, and that is exactly where the

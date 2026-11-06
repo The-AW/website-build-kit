@@ -211,7 +211,7 @@ gate('site.ts absent — refuses legibly, no ENOENT stack', {
  * ──────────────────────────────────────────────────────────────────────── */
 
 const EXAMPLE =
-  'BREVO_API_KEY="xkeysib-..."\nTURNSTILE_SECRET_KEY="local-only placeholder"\n' +
+  'TURNSTILE_SECRET_KEY="local-only placeholder"\n' +
   'LEADS_EXPORT_TOKEN="a long random string"\n';
 
 /**
@@ -240,12 +240,10 @@ if (process.platform === 'win32') {
   });
 } else {
   const bothSet = npxStub(
-    `echo '[{"name":"BREVO_API_KEY"},{"name":"TURNSTILE_SECRET_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]'`,
+    `echo '[{"name":"TURNSTILE_SECRET_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]'`,
   );
-  const oneSet = npxStub(`echo '[{"name":"LEADS_EXPORT_TOKEN"}]'`);
-  const missingTurnstile = npxStub(
-    `echo '[{"name":"BREVO_API_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]'`,
-  );
+  const oneSet = npxStub(`echo '[{"name":"TURNSTILE_SECRET_KEY"}]'`);
+  const missingTurnstile = npxStub(`echo '[{"name":"LEADS_EXPORT_TOKEN"}]'`);
   const notDeployed = npxStub(`echo "workers.api.error.script_not_found" >&2; exit 1`);
   const loggedOut = npxStub(`echo "You are not authenticated. Run wrangler login." >&2; exit 1`);
 
@@ -258,13 +256,13 @@ if (process.platform === 'win32') {
    */
   const demandsJsonFlag = npxStub(
     'case " $* " in\n' +
-      '  *" --format json "*) echo \'[{"name":"BREVO_API_KEY"},{"name":"TURNSTILE_SECRET_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]\' ;;\n' +
+      '  *" --format json "*) echo \'[{"name":"TURNSTILE_SECRET_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]\' ;;\n' +
       '  *) echo "this stub requires --format json" >&2; exit 1 ;;\n' +
       'esac',
   );
 
   /* Output that is not the JSON this expects — what a changed default looks like. */
-  const prettyTable = npxStub(`printf 'Secret Name\\n-----------\\nBREVO_API_KEY\\n'`);
+  const prettyTable = npxStub(`printf 'Secret Name\\n-----------\\nTURNSTILE_SECRET_KEY\\n'`);
 
   /* A deployed worker genuinely holding nothing. Parsed, empty, and an ANSWER. */
   const noneSet = npxStub(`echo '[]'`);
@@ -281,7 +279,7 @@ if (process.platform === 'win32') {
     files: { '.dev.vars.example': EXAMPLE },
     env: { PATH: `${oneSet}:${process.env.PATH}` },
     expect: 1,
-    contains: 'BREVO_API_KEY',
+    contains: 'LEADS_EXPORT_TOKEN',
   });
 
   gate('Turnstile secret missing — must refuse', {
@@ -363,7 +361,7 @@ if (process.platform === 'win32') {
     files: { '.dev.vars.example': EXAMPLE },
     env: { PATH: `${noneSet}:${process.env.PATH}` },
     expect: 1,
-    contains: 'BREVO_API_KEY',
+    contains: 'TURNSTILE_SECRET_KEY',
   });
 
   for (const d of [bothSet, oneSet, missingTurnstile, notDeployed, loggedOut, demandsJsonFlag, prettyTable, noneSet, tooOldForFlag]) {

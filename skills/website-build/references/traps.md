@@ -9,9 +9,9 @@ deploy, wrong result. Check this list before debugging anything strange.
   save, and keys nobody touched are gone from the repo — a CMS rewrites the whole file from its
   schema, so anything the schema does not declare is absent from what it writes back. Not
   flagged, not merged; in the diff it reads as an ordinary content commit. Full rule in
-  `stacks.md` §4. The generic template ships no `.pages.yml`, although PagesCMS is the selected AW
-  default for owner-editable content. Add a site-specific schema and run `npm run check:cms` before
-  editors use it; until then there is no CMS schema for the check to validate.
+  `stacks.md` §4. The generic template is file-based and ships no `.pages.yml`; no CMS is selected
+  for the AW baseline. If a future owner-approved project uses a CMS, add a site-specific schema
+  and run `npm run check:cms` before editors use it; until then there is no CMS schema to validate.
 
 ---
 
@@ -260,7 +260,8 @@ body on the Workers runtime. The endpoint looks broken while being perfectly fin
 The form endpoint 303'd the no-JavaScript path to `/contact-us/` and `/thank-you/` — route
 names carried over from the previous project, neither of which existed. Everything downstream
 was clean: the build passed, types passed, the enhanced path worked perfectly because it never
-follows the redirect, and the lead was still stored and emailed. Only a visitor with
+follows the redirect, and a historical handler still stored and emailed the lead. The current
+starter has no notification adapter. Only a visitor with
 JavaScript off saw it, and what they saw was a 404 after a successful submission.
 
 A route written in a redirect string is invisible to every check that walks links or pages.

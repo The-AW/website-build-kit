@@ -94,7 +94,7 @@ cpSync(src, dest, { recursive: true });
 /*
  * npm strips .gitignore from published packages, so it ships as `gitignore`.
  * Restoring it is not cosmetic: it is what keeps .dev.vars — which holds
- * BREVO_API_KEY and the leads export token — out of the repository.
+ * the Turnstile secret and optional leads export token — out of the repository.
  */
 const shipped = join(dest, 'gitignore');
 if (existsSync(shipped)) renameSync(shipped, join(dest, '.gitignore'));

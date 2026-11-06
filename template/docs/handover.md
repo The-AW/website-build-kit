@@ -30,7 +30,7 @@ without our involvement.
 | Domain name | ⚠ registrar | ⚠ |
 | Website hosting | ⚠ Cloudflare account | ⚠ |
 | The site's code | ⚠ repository URL | ⚠ |
-| Email sending | ⚠ provider | ⚠ |
+| Form notifications | No email/Slack provider selected | Owner decision pending |
 | Analytics | ⚠ Google account | ⚠ |
 
 ⚠ **Attach `recon/dns.md`** if this was a migration. It is the record of what the domain
@@ -56,7 +56,7 @@ alarmed by the first invoice.
 | --- | --- | --- |
 | Domain renewal | Your address on the internet | ⚠ /year |
 | Hosting | Serves every page | ⚠ /month |
-| Email sending | Enquiry notifications | ⚠ /month |
+| Form notifications | No provider or channel selected; monthly cost pending owner decision | — |
 | ⚠ | ⚠ | ⚠ |
 
 **What happens if a payment fails**, in order of how bad it is:
@@ -64,8 +64,9 @@ alarmed by the first invoice.
 1. **Domain lapses** — the site goes dark and email may stop. Recoverable for a short grace
    period, then someone else can buy your address. This is the one to protect.
 2. **Hosting lapses** — the site goes dark, but nothing is lost. Restored by paying.
-3. **Email sending lapses** — the site keeps working and enquiries are still *saved*, but
-   nobody gets notified. See §5: this is why they are stored before the email is sent.
+3. **Notification transport is not configured.** This is a launch blocker: a stored lead does
+   not alert anyone. If a channel is selected later and it fails, the archive remains available;
+   follow the documented recovery process and update the privacy notice and costs.
 
 ---
 
@@ -100,8 +101,10 @@ already have — it belongs here with the reason.
 
 ## 5. Your data, and how long it is kept
 
-**Enquiries from the website are saved before the notification email is sent.** If the email
-provider has an outage you lose a notification, never the enquiry itself.
+**The starter saves enquiries in KV and does not send email or Slack notifications.** No
+notification transport is selected, and this blocks production launch. Until the owner chooses and
+tests one, a successful form submission does not alert anyone; records are available only through
+the protected export.
 
 - **Where:** stored with the hosting, in your own account
 - **How long:** ⚠ days, then automatically deleted — see `leadRetentionDays` in
@@ -128,7 +131,7 @@ how.
 | Anything about how it looks | A developer |
 
 **Opening hours, address and phone number live in one place** and update the whole site at
-once — the header, the footer, every button, the notification emails, and what Google reads.
+once — the header, the footer, every button, and what Google reads.
 Ask for them to be changed in that one file rather than page by page, or they will drift.
 
 ### Editing it yourself

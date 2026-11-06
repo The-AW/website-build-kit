@@ -3,8 +3,7 @@
  *
  * Both the visible UI and the JSON-LD structured data read from here, so the
  * page and the schema can never drift apart. Change a phone number here and it
- * updates the header, footer, every call-to-action, the notification emails and
- * what Google reads.
+ * updates the header, footer, every call-to-action and what Google reads.
  *
  * ── FILL THIS IN FIRST. Everything else depends on it. ─────────────────────
  */
@@ -31,8 +30,7 @@ export const business = {
   name: 'Business Name',
 
   /**
-   * BCP 47 language tag. Drives `<html lang>`, `inLanguage` in structured data,
-   * and how dates are formatted in the lead notification.
+   * BCP 47 language tag. Drives `<html lang>` and `inLanguage` in structured data.
    *
    * ⚠ SET THIS. The template shipped `en-US` hardcoded in five files while its
    * own compliance reference covered the EAA, UK GDPR and AODA — so a British
@@ -59,10 +57,6 @@ export const business = {
   email: {
     display: EMAIL, // shown on the site
     href: `mailto:${EMAIL}`,
-    sender: 'hello@example.com', // must be a VERIFIED sender at your email provider
-    senderName: 'Business Name',
-    notify: 'owner@example.com', // where live enquiries land
-    notifyTest: 'dev@example.com', // where staging enquiries land — never the client
   },
 
   address: {
@@ -71,10 +65,7 @@ export const business = {
     region: 'ST',
     regionName: 'State',
     /**
-     * IANA timezone, used to stamp lead notifications in the business's own
-     * local time. A hardcoded zone in the email template is a previous
-     * client's clock: every enquiry then carries a plausible timestamp that is
-     * silently hours out, and nobody checks a date they can read.
+     * IANA timezone, used for dates rendered in the site's local context.
      */
     timeZone: 'UTC',
     /** Short label printed after the time. Keep it in step with `timeZone`. */
