@@ -499,20 +499,24 @@ the keyboard and screen-reader passes.
 
 ---
 
-## 4. Stack profile — Astro + Cloudflare
+## 4. Example stack profile — Astro + Cloudflare
 
-The proven configuration. Swap components deliberately, not by default.
+Use this only when recon confirms a content-first site with a small Worker runtime need, such as a
+first-party form endpoint. A static-only site can deploy Workers Static Assets without a Worker
+script or Astro adapter; add the runtime and adapter only for server routes, on-demand rendering or
+Cloudflare bindings.
 
 | Concern | Choice | Why |
 | --- | --- | --- |
-| Framework | Astro, `output: 'static'` | Marketing pages change weekly, not per-request. Zero JS by default |
-| Runtime | Cloudflare Workers adapter, per-route `prerender = false` | One origin-free deploy; a runtime only where a route needs one |
+| Framework | Astro, static-first | Marketing pages can build ahead of requests; add runtime behavior only where required |
+| Runtime | None for static-only output; Worker plus supported Astro adapter for server routes/bindings | A form API route is runtime behavior; not every page needs to run in a Worker |
 | Media | Build step → static assets, or R2 behind a CDN subdomain at scale | Under ~10 MB, shipping with the worker beats a bucket |
-| Storage | KV, keyed `lead:<iso-timestamp>:<uuid>` | Sorts chronologically; durable backup of every submission |
+| Lead archive | Optional Workers KV with an enforced TTL, only if the owner needs an archive | Avoid retaining submissions by default; document retention and deletion for every copy |
 | Content | Collections + schema validation | Bad frontmatter fails the build |
-| CMS | Git-based (PagesCMS or similar) | Non-technical editing without a database |
+| CMS | PagesCMS for owner-editable content; site-specific `.pages.yml` | AW default; no-CMS only when there is no ongoing editorial need and the exception is recorded. EmDash is future evaluation only |
 | Motion | CSS + IntersectionObserver; GSAP only for pinning or scrubbed timelines | 70 KB is a lot to spend on a fade |
-| Email | Transactional API, key in the secret store | Never SMTP credentials in the repo |
+| Form notifications | Brevo email by default; Slack only if explicitly approved | Keep secrets out of the repo; isolate staging; test delivery failure and recovery |
+| Form protection | Turnstile with server-side Siteverify, plus honeypot and rate limiting | The generic template integrates the widget and Siteverify but not request rate limiting |
 
 **Single worker, not two.** One worker serves staging and production; the build variable
 decides behaviour. A second environment means a second worker name and a second thing to

@@ -106,12 +106,16 @@ deleted.
 
 ## Defaults
 
-Astro, static-first, for content-first sites that fit → Cloudflare Workers with static assets;
-use the Astro adapter only for on-demand routes or bindings → file-based content in each site's
-own repository, no CMS by default → first-party form endpoint when needed → owner-selected
-outbound email transport. Do not use LeadConnector. Astro/Workers is conditional, not a blanket
-mandate; pure static sites do not need the adapter. See `references/stacks.md` and the AW process
-docs below.
+Astro, static-first, for content-first sites that fit → Workers Static Assets for a static-only
+build (no adapter, Worker script or runtime bindings) → add a Worker runtime and the supported
+Astro adapter only for server routes, on-demand rendering or bindings → PagesCMS for owner-editable
+content, with a site-specific `.pages.yml` → first-party form endpoint with Turnstile validated by
+server-side Siteverify → Brevo email notifications by default, with Slack only as an explicitly
+approved additional or alternative channel. Do not use LeadConnector. Astro/Workers is conditional,
+not a blanket mandate. The generic starter integrates Turnstile and Brevo but ships no PagesCMS
+schema and lacks request rate limiting, a body-size cap, duplicate protection, Slack delivery and
+durable notification recovery; close those gaps before production use. See `references/stacks.md`
+and the AW process docs below.
 
 ## Non-negotiables
 

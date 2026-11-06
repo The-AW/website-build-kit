@@ -6,7 +6,7 @@ import { business, addressOneLine } from '../data/business';
 
 /**
  * Rendered per request, not prerendered — the API redirects back here with
- * ?invalid=… when a no-JavaScript form POST fails validation, and a static
+ * ?invalid=… when a native form POST fails validation, and a static
  * page has no query string to read.
  *
  * Structure only. The layout of this page is a project decision.
@@ -15,7 +15,7 @@ export const prerender = false;
 
 const invalidFields = (Astro.url.searchParams.get('invalid') ?? '').split(',').filter(Boolean);
 const submitFailed = Astro.url.searchParams.has('failed');
-/** The no-JavaScript success landing. Keep in step with SUCCESS in
+/** The native form success landing. Keep in step with SUCCESS in
  *  src/pages/api/contact.ts — without this the native POST 303s to a page that
  *  looks exactly like the one the visitor just submitted. */
 const submitted = Astro.url.searchParams.has('sent');

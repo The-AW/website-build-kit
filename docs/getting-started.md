@@ -77,7 +77,7 @@ npm run recon -- https://old-site.com        # on a migration, BEFORE designing 
 npm run dev                                  # layout and content work
 npm run tells                                # what is undecided, and the design tells
 npm run check                                # types — a bad edit should fail the build
-npm run build:staging && npx wrangler dev    # real bindings, forms, redirects, 404s
+npm run build:staging && npx wrangler dev    # real bindings; configure Turnstile before form tests
 npm run verify -- https://new.example.com    # the DEPLOYED site. exits non-zero
 npm run a11y                                 # accessibility check, one URL per family
 npm run handover                             # docs/handover.md → PDF, for the client
@@ -90,8 +90,13 @@ server models none of them, and they are exactly where things break.
 
 ```bash
 npx wrangler secret put BREVO_API_KEY
+npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put LEADS_EXPORT_TOKEN     # openssl rand -base64 32
 ```
+
+Set the public `PUBLIC_TURNSTILE_SITE_KEY` in the build environment and configure the Turnstile
+widget's allowed hostnames. It is embedded in the page and is not a secret; never expose the
+server-side secret through a `PUBLIC_` variable.
 
 Locally, copy `.dev.vars.example` to `.dev.vars` — gitignored. Never the repo, never chat.
 

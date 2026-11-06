@@ -169,8 +169,8 @@ property or the registrar is a this-week problem, not a launch-day one.
 ```
 ● Round 2 — scope, providers, integrations, law.
 
-  Providers all have a default, so this is mostly confirmation:
-    Astro · Cloudflare Workers · KV · Brevo · Turnstile if spam appears
+  The starting point, subject to recon and fit:
+    Astro · Worker runtime for the first-party form · PagesCMS · KV · Brevo · Turnstile
 
   Where are your customers — country, and any state that matters?
   Public sector, government contract, or federally funded healthcare?
@@ -223,7 +223,7 @@ Nothing already answered by recon gets asked, and it says what it assumed.
 
   Project      Example Plumbing · local services · win = phone call
   Archetype    local services
-  Stack        Astro static · Cloudflare Workers · KV · Brevo
+  Stack        Astro static pages + Worker contact route · PagesCMS · KV · Brevo
   Routes       47 across 6 families
   Features     form + KV + CSV export · areas · blog · sticky call bar
   Design       Editorial · Fraunces + Inter · restrained motion
@@ -256,7 +256,7 @@ is noise nobody reads.
 ## Phase 4 · Build          [in progress]
 
 Gates passed   0 recon ✅  1 extract ✅  2 model ✅  3 tokens ✅
-Locked         Astro/CF · Brevo · KV · Editorial · Fraunces+Inter · restrained
+  Locked         Astro/CF · PagesCMS · Brevo · Turnstile · KV · Editorial · Fraunces+Inter
 Archetype      local services
 Compliance     WCAG 2.2 AA · no deadline · CCPA · licence in footer
 Open           ! GA4 property owner unknown — blocks go-live
@@ -294,13 +294,14 @@ The gates are real stops:
 ```
 ● Phase 6 gate — a 200 isn't the gate.
 
-  Bash(curl -X POST …/api/contact/ -H "Origin: …")            → 200
+  Browser submit through Turnstile with a fresh token           → 200
+  Missing/invalid token                                          → 403, no lead stored
   Bash(npx wrangler kv key list --binding LEADS_STAGING)      → lead:2026-08-02T…
   Brevo dashboard                                              → delivered 14:22
-  With JavaScript off, native POST                             → stored + notified
+  With JavaScript off, submission                              → rejected; phone/email fallback shown
 
   Passed. Empty → 422 with field errors, honeypot → silent accept,
-  cross-origin → 403.
+  cross-origin → 403. Turnstile failure never bypasses verification.
 ```
 
 ---

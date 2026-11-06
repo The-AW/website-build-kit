@@ -26,18 +26,18 @@ Use one copy per site in that site's repository. Do not store client-specific re
 - [ ] Extract rendered content; use WordPress REST/API/export as a second source when available, not as the sole completeness check.
 - [ ] Preserve original language, page intent, slugs, headings, body copy, internal links, image alt text and downloadable assets.
 - [ ] Preserve per-route metadata, canonical URLs, structured data and index/noindex intent; verify facts rather than copying unsupported claims.
-- [ ] Keep content file-based in the site repository by default; do not add PagesCMS or another CMS without an explicit editorial need and owner decision.
+- [ ] Configure PagesCMS as the AW default for owner-editable content: add a site-specific `.pages.yml`, map every editable file/field, limit repository access to approved editors, and test that an edit saves without dropping undeclared data. The generic starter does not ship a PagesCMS config; document a no-CMS exception only if there is no ongoing editorial editing need. [PagesCMS documentation](https://pagescms.org/docs/)
 - [ ] Store media locally when permitted and create a source manifest with source URL, local path, fetch status, hash, alt text and usage note.
 - [ ] Record unavailable media and broken source links with an owner-approved action or an open status.
 
 ## 3. Architecture and project setup
 
 - [ ] Confirm the site is content-first and fits static-first Astro; identify every route that needs runtime behavior.
-- [ ] Confirm whether Cloudflare Workers are the right target. Use static assets without the Astro adapter for a purely static build; use the current supported Astro Cloudflare adapter when on-demand routes or bindings are required.
+- [ ] Choose hosting based on runtime needs: a purely static `dist/` can use Workers Static Assets with Wrangler and no Astro adapter, Worker script or bindings; on-demand routes, server rendering and Cloudflare bindings need a Worker runtime and the supported Astro Cloudflare adapter.
 - [ ] Re-check official Astro/Cloudflare docs and supported versions; commit the lockfile and document the Node/runtime requirements.
 - [ ] Scaffold a separate site repository; keep client routes, content, media, credentials and analytics out of the kit.
 - [ ] Decide where content and assets live; define schemas and ensure there is one source of truth.
-- [ ] Decide whether any CMS is genuinely required. Cloudflare EmDash is a future evaluation, not an assumed current integration.
+- [ ] Confirm who will edit content after handover and map the PagesCMS collections to that workflow. Cloudflare EmDash is a future evaluation only, not the selected CMS or a current integration.
 - [ ] Choose storage, retention, analytics and consent behavior only when justified by site needs and owner decisions.
 
 ## 4. Routes, SEO and integrations
@@ -52,14 +52,19 @@ Use one copy per site in that site's repository. Do not store client-specific re
 ## 5. Contact form and email choice
 
 - [ ] Implement the site's own same-origin form endpoint in the site repository; keep validation and tests source-controlled.
-- [ ] Validate input types, lengths and content type; provide accessible error and success states and a non-JavaScript submission path where required.
-- [ ] Add honeypot and rate limiting; add Turnstile only if the owner accepts the additional dependency and privacy implications.
-- [ ] Decide whether submissions are stored. If yes, minimize PII, store before sending email, define retention/deletion and secure any export route.
-- [ ] Select the email notification transport separately from the form endpoint; never put a visitor address in `From`, and use a verified site-owned sender with the visitor in `Reply-To`.
-- [ ] If considering Cloudflare Email Service Email Sending, record acceptance of its Beta status, Workers Paid requirement for arbitrary recipients, quotas, and sending-domain DNS setup.
-- [ ] Do not confuse Email Routing with outbound sending; routing is for inbound mail and may change root MX records.
+- [ ] Match the form action to the Astro route's trailing-slash configuration and verify the POST reaches the handler without a redirect.
+- [ ] Allow only intended content types and fields; cap total request-body size before parsing; validate input types, lengths and required fields. Provide accessible error/success states and an accessible recovery path if scripts or verification are unavailable. Never bypass bot verification silently.
+- [ ] Configure the generic template's Turnstile integration: set the public `PUBLIC_TURNSTILE_SITE_KEY` in the build environment and `TURNSTILE_SECRET_KEY` as a Worker secret; register the exact staging/production hostnames and use action `contact`. The handler validates Siteverify success, hostname and action on every non-honeypot submission. The widget alone is not protection. See [client-side rendering](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/) and [server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/).
+- [ ] Add a honeypot and endpoint rate limiting as additional controls. Test Turnstile missing, invalid, expired, replayed and Siteverify-unavailable cases; fail closed with a user-recoverable response.
+- [ ] Decide whether submissions are stored. If yes, minimize PII, store before notifications, define retention/deletion for each store and notification copy, and secure any export route. A KV TTL does not expire email, Slack messages, provider logs or backups.
+- [ ] Use Brevo as the AW default email notification provider. Verify a site-owned sender, keep `BREVO_API_KEY` in the Worker secret store, never put a visitor address in `From`, use visitor `Reply-To`, and isolate staging recipients.
+- [ ] Add Slack only as an explicitly approved additional or alternative notification channel. The webhook URL is secret and channel-bound; Incoming Webhooks cannot delete posted messages. Use a staging channel, minimize shared fields, and document workspace retention/access. See [Slack Incoming Webhooks](https://api.slack.com/messaging/webhooks).
+- [ ] The generic template supports Brevo email and Turnstile, but has no request-body size cap, request rate limiter, duplicate/idempotency protection, Slack adapter, durable notification retry or alert; if storage succeeds and Brevo fails, it still tells the visitor the submission succeeded. Implement and test an operator alert or durable retry before production use.
+- [ ] Update the privacy notice to describe Turnstile and every form-data recipient/provider, the fields shared with each, and separate retention/deletion rules for KV, inboxes, Slack messages and provider copies. If Invisible mode is selected, include Cloudflare's required [Turnstile Privacy Addendum](https://developers.cloudflare.com/turnstile/concepts/widget/).
+- [ ] Treat Cloudflare Email Service Email Sending as a researched alternative only. If the owner explicitly chooses it instead of Brevo, record acceptance of Beta status, Workers Paid requirement for arbitrary recipients, quotas, sending-domain DNS changes and deliverability risk.
+- [ ] Do not confuse Email Routing with outbound sending; routing is for inbound mail and changes root MX records. It cannot coexist with another provider's MX records without a planned mail cutover.
 - [ ] Do not change DNS, MX, SPF, DKIM or DMARC in this migration task. Capture current records and require a separately approved change plan.
-- [ ] Test valid, invalid, malformed, cross-origin, honeypot, rate-limited and duplicate submissions; test storage and email failures independently.
+- [ ] Test valid, invalid, malformed, oversized, cross-origin, honeypot, rate-limited, duplicate and retry submissions; verify missing/invalid/expired/replayed Turnstile tokens and Siteverify outage. Test storage and each enabled notification channel's success/failure independently. Never send test PII to production email or Slack destinations.
 
 ## 6. Build and QA gates
 
@@ -75,7 +80,7 @@ Use one copy per site in that site's repository. Do not store client-specific re
 ## 7. Handover and release boundary
 
 - [ ] Deliver source, runbook, content/media manifests, URL/redirect map, environment setup and service/binding inventory.
-- [ ] Document form data flow, who receives messages, storage/retention, email provider, failure handling and any beta dependency.
+- [ ] Document form data flow, fields sent to each recipient/provider, storage and notification-copy retention/deletion, notification destinations, failure/retry ownership and any Beta dependency.
 - [ ] Record unresolved owner decisions and accepted gaps; do not mark the project launch-ready while a decision is silently missing.
 - [ ] Prepare rollback and post-launch monitoring for 404s, forms, delivery failures, analytics and search indexing.
 - [ ] Stop before deployment, production cutover or DNS/mail changes unless separately authorized; those are not implied by a green build.

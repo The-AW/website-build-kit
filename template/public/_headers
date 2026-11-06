@@ -35,16 +35,19 @@
 # because nothing in this repo would notice them disappearing.
 #
 # ⚠ WHAT THIS CSP DELIBERATELY DOES NOT DO: restrict scripts.
-# `script-src` is absent on purpose. Google Tag Manager exists to inject
-# arbitrary scripts chosen later by whoever runs the container, and this is a
-# static site, so per-request nonces are not available. Any workable
-# `script-src` would need `'unsafe-inline'` plus an allow-list of every origin
-# GTM might load — which blocks almost no real XSS while silently breaking the
-# next marketing tag the client adds. A CSP that gets switched off the first
-# time it breaks something protects nobody.
+# Neither `script-src` nor `default-src` is present. Google Tag Manager exists
+# to inject arbitrary scripts chosen later by whoever runs the container, and
+# this is a static site, so per-request nonces are not available. The current
+# policy therefore does not block Turnstile's external API script, but it also
+# does not restrict other scripts. If a project adds an effective `script-src`
+# or `default-src`, it must allow https://challenges.cloudflare.com or the widget
+# will break; test the full policy before enforcing it.
 #
-# What IS here are the directives that cost nothing and cannot break a working
-# page, verified against the live site before shipping:
+# The current scaffold has no other framed embeds. `frame-src` explicitly
+# permits Turnstile and same-origin frames; add only reviewed origins if the
+# project later adopts a booking, video, map or other embedded surface.
+#
+# The other directives below are verified against the live site before shipping:
 #   frame-ancestors  clickjacking — nothing embeds this site
 #   base-uri         stops an injected <base> rewriting every relative URL
 #   form-action      every form on the site posts to its own origin
@@ -58,4 +61,4 @@
 /*
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
-  Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'
+  Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-src 'self' https://challenges.cloudflare.com

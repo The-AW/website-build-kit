@@ -429,18 +429,23 @@ own `README.md`, persistent `CLAUDE.md`, content, assets, configuration and secr
 client-specific URLs, content, screenshots, analytics IDs, credentials or form submissions in
 this public kit.
 
-For AW sites, file-based content in the site repository is the default; do not assume PagesCMS or
-another CMS. Cloudflare EmDash is a future evaluation only. Astro with Cloudflare Workers is a
-conditional starting point for content-first sites that fit: static output can use Workers
-assets without the Astro adapter, while on-demand routes or bindings require the current supported
-adapter path. Recheck the official Astro/Cloudflare guide for each project.
+For AW sites, PagesCMS is the selected CMS default for owner-editable content; configure a
+site-specific `.pages.yml` after auditing the content model. A no-CMS exception must be documented
+when no ongoing editorial editing is needed. Cloudflare EmDash is a future evaluation only. Astro
+with Cloudflare Workers is a conditional starting point for content-first sites that fit. A
+static-only build can deploy `dist/` as Workers Static Assets without an Astro adapter, Worker
+script or runtime bindings; server routes, on-demand rendering and bindings require a Worker runtime
+and the supported Astro adapter. Recheck the official Astro/Cloudflare guide for each project.
 
-Do not use LeadConnector for contact forms. Prefer a source-controlled same-origin form endpoint
-in the site repository and choose storage and outbound email separately. The current template's
-Brevo adapter is not an AW provider decision. Cloudflare Email Routing is inbound forwarding;
-Cloudflare Email Service Email Sending is a separate Beta outbound product. Neither product
-choice nor any DNS/MX change is automatic; capture records read-only and get separate approval
-before changing production mail flow or deploying.
+Do not use LeadConnector for contact forms. Use a source-controlled same-origin endpoint with
+Cloudflare Turnstile and server-side Siteverify validation. Brevo is the selected AW email
+notification default; Slack may be added as an explicitly approved channel. The generic template
+now supports Turnstile and Brevo, but lacks request rate limiting, a total body-size cap, duplicate
+protection, Slack delivery, durable notification retry and alerting; close those gaps before
+production use. Cloudflare Email Routing is inbound; Email Service Email Sending is a researched
+Beta alternative with plan, recipient and DNS limits, not the AW default. No DNS/MX change is
+automatic; capture records read-only and get separate approval before changing production mail flow
+or deploying.
 
 Use [`docs/aw-migration-process.md`](docs/aw-migration-process.md) for the reusable method and
 [`docs/aw-migration-checklist.md`](docs/aw-migration-checklist.md) for each site's copy.

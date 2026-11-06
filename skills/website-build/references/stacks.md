@@ -3,10 +3,14 @@
 Every decision that has a default, what the default is, and the specific reason you would
 deviate. Read alongside `kickoff.md` (discovery) and `website-build.md` (how to build).
 
-**AW starting point, only when the site fits:** Astro static-first → Cloudflare Workers with static
-assets, adding the official adapter only for on-demand routes or bindings → file-based content in
-the site's own repository, with no CMS by default → first-party form endpoint when needed → an
-owner-selected outbound email transport. Storage, analytics and bot controls are separate decisions.
+**AW starting point, only when the site fits:** Astro static-first → Workers Static Assets for a
+static-only build (no adapter, Worker script or runtime bindings) → add a Worker runtime and the
+supported Astro adapter only for server routes, on-demand rendering or bindings → file-based content
+in the site's own repository, edited through PagesCMS where owners need editorial access →
+first-party form endpoint with Turnstile validated by server-side Siteverify → Brevo email
+notifications by default, with Slack only if explicitly approved as an additional or alternative
+channel.
+Storage and analytics remain separate decisions.
 
 Verify the current Astro/Cloudflare framework guide and the site's actual runtime needs at kickoff.
 Deviate on evidence, not preference. The reusable AW process is in
@@ -127,7 +131,7 @@ anyone still using the data in it.**
 | **Membership / gated content** — MemberPress, WooCommerce Memberships | Authentication and per-user state. Out of scope for this kit, and it will not shrink | Say so before quoting, not after |
 | **Live chat** — Intercom, Crisp, Tawk, Drift | Costs LCP on every page and usually nobody is answering it | Ask for 30 days of response-time data. If replies take hours, a phone number outperforms it |
 | **Reviews** — Trustpilot, Birdeye, Yotpo widgets | Page weight, and the schema often duplicates yours | Static hand-picked quotes + `Review` schema, unless the live badge is contractual |
-| **Spam** — reCAPTCHA v2/v3 | Google's key does not move to a new domain automatically, and v3 scores need tuning per site | Honeypot + server validation; Turnstile when spam appears |
+| **Spam** — reCAPTCHA v2/v3 | Google's key does not move to a new domain automatically, and v3 scores need tuning per site | AW baseline: Cloudflare Turnstile with server-side Siteverify, plus honeypot and rate limiting |
 | **Consent banner** — CookieYes, Cookiebot, Complianz | Usually configured for cookies the new site will not set. Porting it wholesale describes tracking that no longer happens | Re-derive from what the new site actually sets. Often: nothing needed |
 | **Search / heatmaps** — Hotjar, Clarity, Algolia | Rarely load-bearing, frequently forgotten in the bill | Ask whether anyone opened it this quarter |
 | **Custom plugin behaviour** — quote calculators, availability lookups, price tables | The one category with no drop-in replacement. It is bespoke work and needs its own estimate | Inventory it explicitly and price it separately, before agreeing a scope |
@@ -460,17 +464,19 @@ stops matching. See `traps.md`. Turn AVIF off for a project with `FORMATS = ['we
 
 ---
 
-## 4. Optional CMS — never an AW default
+## 4. PagesCMS — selected AW CMS default
 
-AW starts with file-based content in the site repository. Add a CMS only if the owner explicitly
-needs non-developer publishing and the workflow justifies its operational and data-loss risks. If
-developers are the only editors, Markdown/JSON in Git is faster and has no additional CMS service.
-Cloudflare EmDash is a possible future evaluation, not an assumed current integration; verify its
-then-current maturity, hosting, authoring and export behavior if that decision is reopened.
+PagesCMS is the selected AW default when site owners need to edit content. It edits files in the
+site's GitHub repository through a `.pages.yml` configuration and does not create a separate content
+database. The schema is site-specific: map every editable file and field before editors use it, and
+restrict repository access to approved collaborators. The generic starter does not ship a `.pages.yml`,
+so add and validate it after the content inventory. A no-CMS exception is appropriate only when
+there is no ongoing editorial editing need and that decision is recorded. Cloudflare EmDash is a
+future evaluation only, not a current integration. [PagesCMS documentation](https://pagescms.org/docs/)
 
 | Option | When | Notes |
 | --- | --- | --- |
-| **PagesCMS** | Astro/11ty/Hugo content, GitHub-hosted, when owner-approved | Free, hosted, YAML config in the repo, GitHub OAuth. No build step, no self-hosting |
+| **PagesCMS** ✅ AW default | Owner-editable content in a GitHub repository | `.pages.yml` declares content/media; edits write to repository files and follow the site's normal build/deploy flow. See [official setup docs](https://pagescms.org/docs/) |
 | **Keystatic** | Astro or Next, want types and local editing | Thinkmill. First-class Astro integration, edits locally against the filesystem or via GitHub. Excellent for typed collections |
 | **Sveltia CMS** | You want Decap's config with a modern UI | Drop-in Decap replacement, much faster, better media handling |
 | **Decap CMS** | Legacy projects already using it | Mature but ageing; auth needs its own backend outside Netlify |
@@ -483,8 +489,9 @@ editing; Payload or Directus when you want to self-host; Contentful for enterpri
 procurement. All add a network dependency to your build and a second place content can be
 wrong.
 
-**Rule:** git-based unless the client publishes several times a week, needs draft
-collaboration, or has more than a handful of editors.
+**Rule:** PagesCMS is the AW default for owner-editable content. If no ongoing editorial work is
+needed, record a no-CMS exception. Consider a headless CMS only when collaboration, publishing
+workflow or shared data requirements justify a separate content database.
 
 **Choosing a CMS is a content-architecture decision, not an installation step.** Inventory the
 site, model the content that actually exists, keep one source of truth, protect the technical
@@ -757,13 +764,13 @@ changes, existing projects do not get it; say so in the handover or check it at 
 
 | Option | When | Notes |
 | --- | --- | --- |
-| **Owner-selected transactional provider** ✅ AW rule | The project needs form notifications, receipts or confirmations | Choose per site; verified sender, secrets, staging recipient separation and failure behavior are required. The current template's Brevo adapter is an option, not a default |
+| **Brevo** ✅ AW default | Contact-form email notifications, receipts or confirmations | The current template includes the Brevo adapter. Use a verified site-owned sender, keep `BREVO_API_KEY` in the secret store, isolate staging recipients, and test failure/recovery. Change provider only by explicit owner decision |
 | **Resend** | Developer-first, want React Email templates | Clean API and DX. Newer, smaller free tier |
 | **Postmark** | Deliverability is critical and you will pay for it | Best-in-class transactional reputation, separate streams |
 | **AWS SES** | High volume, already on AWS | Cheapest at scale. Needs warm-up and reputation management |
 | **Mailgun / SendGrid** | Existing account or specific integration | Fine; nothing they do the above do not |
-| **Cloudflare Email Routing** | The owner wants inbound aliases forwarded to an existing inbox or processed by a Worker | Inbound only, not a contact-form outbound sender or hosted mailbox. Requires Cloudflare DNS and changes root MX records; review current mail flow first |
-| **Cloudflare Email Service Email Sending** | Worker-native transactional notifications if the owner accepts Beta | Separate from Email Routing; native `send_email` binding. Arbitrary recipients require Workers Paid, with quotas and sending-domain DNS setup. Pilot only after explicit plan, deliverability and DNS approval |
+| **Cloudflare Email Routing** | The owner wants inbound aliases forwarded to an existing inbox or processed by a Worker | Inbound only, not a contact-form outbound sender or hosted mailbox. Requires Cloudflare DNS and replaces root-domain MX routing; it cannot coexist with another provider's MX records without a planned cutover |
+| **Cloudflare Email Service Email Sending** — researched alternative only | Only if the owner explicitly chooses it instead of Brevo and accepts Beta | Separate from Email Routing; native `send_email` binding. Before domain onboarding, recipients are limited to verified account addresses; arbitrary recipients require an onboarded sending domain and Workers Paid. Verify current quotas/pricing and review SPF/DMARC before separately approved DNS changes |
 
 **Google Workspace is not a transactional provider.** It gives the business real mailboxes at
 their domain — get it for that. Sending app notifications through Workspace SMTP hits
@@ -773,6 +780,17 @@ mail. Use a transactional API.
 **Non-negotiables whichever you pick:** a verified sender on the client's own domain, SPF +
 DKIM + DMARC configured, key in the platform secret store, and the recipient
 **environment-derived** so staging never emails the client.
+
+### Slack notifications
+
+Brevo email is the AW notification default. Slack is an optional additional or alternative
+destination, not a form endpoint, CRM or durable lead archive. Use a workspace-approved Slack app
+and Incoming Webhook only after confirming the destination
+channel and the fields the owner is willing to share. A webhook URL is a secret and is tied to the
+channel selected during app authorization; it belongs in the platform secret store, never in the
+repository. Incoming Webhooks cannot delete a message after posting, so the KV retention period
+does not govern Slack copies. Use a separate staging channel and test disabled/invalid webhook and
+delivery failures. See [Slack's Incoming Webhooks documentation](https://api.slack.com/messaging/webhooks).
 
 ### Marketing — newsletters, campaigns
 
@@ -852,14 +870,21 @@ surface to keep working. Cloudflare Access also has to be set up, which is a rea
 operation, not a build step. Offer it at discovery — [`kickoff.md`](kickoff.md) §2 — rather than
 retrofitting it in week three.
 
-**Spam, in order of preference:**
-1. **Honeypot** — always, free, catches most bots. Accept silently when it trips
-2. **Cloudflare Turnstile** ✅ — free, privacy-preserving, usually invisible, no puzzle
-3. **Rate limiting** at the edge on the endpoint
-4. hCaptcha / reCAPTCHA — only if something above proved insufficient
+**AW form protection baseline:** Cloudflare Turnstile, with server-side Siteverify on every
+accepted submission, plus a honeypot and endpoint rate limiting. A browser widget without
+Siteverify is not protection; Cloudflare documents server-side validation as mandatory. Tokens
+expire after five minutes and are single-use, so provide a recoverable error path for expired,
+replayed or invalid tokens and for verification-service outages. Turnstile adds a Cloudflare-hosted
+widget and data-processing dependency; document it and test widget accessibility rather than
+promising that Managed mode is always invisible. If Invisible mode is selected, Cloudflare requires
+the Turnstile Privacy Addendum to be referenced in the site's privacy policy. See [Cloudflare's
+validation guide](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
+and [widget modes and privacy requirements](https://developers.cloudflare.com/turnstile/concepts/widget/).
 
-A quote form on a small business site does not need a CAPTCHA on day one. Honeypot plus
-server validation handles the overwhelming majority; add Turnstile if real spam appears.
+The current generic template includes the widget and server-side Siteverify checks, but does not
+implement request rate limiting, an overall body-size cap, duplicate protection, or notification
+retry/alerting. Configure the public site key and Worker secret, then add the remaining controls and
+verify them in the site repository before production use.
 
 ---
 
@@ -994,11 +1019,11 @@ Source        WordPress + Elementor  → crawl rendered HTML, mine SEO plugin ex
 Framework     Astro 7, output: static
 Host          Cloudflare Workers, single worker, build variable decides environment
 Media         Build-time sharp → WebP + manifest, served from worker assets
-CMS           None by default; add only after an owner-approved editorial need
+CMS           PagesCMS for owner-editable content; site-specific .pages.yml
 Forms         Astro API route, prerender = false
 Storage       Cloudflare KV, lead:<iso>:<uuid>, written before any third-party call
-Email         Owner-selected transactional transport; the kit's Brevo adapter is optional
-Spam          Honeypot + server validation; Turnstile if spam appears
+Notifications Brevo email by default; Slack only if explicitly approved
+Spam          Turnstile + server-side Siteverify, honeypot and rate limiting
 Analytics     GA4 + GTM if asked, else Cloudflare Web Analytics. Production only
 Search        Search Console + Bing Webmaster
 Local         GBP + Bing Places + Apple Business Connect, NAP from the site's data file

@@ -21,6 +21,8 @@ interface ImportMetaEnv {
   /** Set by the build script. Never read directly — go through src/data/site.ts. */
   readonly PUBLIC_SITE_ENV?: 'development' | 'staging' | 'production';
   readonly PUBLIC_SITE_URL?: string;
+  /** Public widget key embedded in the contact form; never put the secret here. */
+  readonly PUBLIC_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {

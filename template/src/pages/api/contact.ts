@@ -3,10 +3,12 @@ import { validateLead, leadKey, type LeadRecord } from '../../lib/lead';
 import { notifyTeam } from '../../lib/brevo';
 import { site } from '../../data/site';
 import { kv, secret } from '../../lib/runtime';
+import { verifyTurnstile } from '../../lib/turnstile';
+import { isSameOrigin } from '../../lib/origin';
 import { business } from '../../data/business';
 
 /**
- * Where the no-JavaScript path lands. One place, because these are routes and
+ * Where the native browser form POST lands. One place, because these are routes and
  * a route that only exists in a redirect string is a route nobody notices has
  * gone — the first version of this file pointed at /contact-us/ and /thank-you/
  * from a different project, and both were 404s in a fresh build.
@@ -25,9 +27,10 @@ const json = (body: unknown, status: number) =>
   });
 
 /**
- * A native form POST — no JavaScript — must not land on a page of raw JSON.
- * The enhanced path sends `accept: application/json`; anything else is a
- * browser submitting the form directly and gets a redirect it can follow.
+ * A native browser form POST must not land on a page of raw JSON. The enhanced
+ * path sends `accept: application/json`; anything else is a browser submitting
+ * the form directly and gets a redirect it can follow. Turnstile still has to
+ * provide a valid token for either path.
  */
 const wantsHtml = (request: Request) => {
   const accept = request.headers.get('accept') ?? '';
@@ -47,7 +50,7 @@ const seeOther = (location: string) =>
  * ⚠ WHAT IT DOES NOT STOP, so nobody reads more into it than it does: a script
  * posting directly can simply omit the header, and `Origin` is absent on a
  * same-origin form post from some privacy tooling — so absent has to be
- * allowed, or the no-JavaScript path breaks for real people. Spam is the
+ * allowed, or the native form path breaks for real people. Spam is the
  * honeypot's job, not this.
  *
  * This check must run BEFORE validation. Ordering it after means a
@@ -55,18 +58,8 @@ const seeOther = (location: string) =>
  * refusal only ever fires for submissions that were going to be rejected
  * anyway — which looks identical in a status-code test.
  */
-const sameOrigin = (request: Request) => {
-  const origin = request.headers.get('origin');
-  if (!origin) return true;
-  try {
-    return new URL(origin).host === new URL(request.url).host;
-  } catch {
-    return false;
-  }
-};
-
 export const POST: APIRoute = async ({ request, clientAddress }) => {
-  if (!sameOrigin(request)) {
+  if (!isSameOrigin(request.url, request.headers.get('origin'))) {
     return json({ ok: false, error: 'Cross-origin submissions are not accepted.' }, 403);
   }
 
@@ -105,7 +98,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
    * try again without the field.
    *
    * ⚠ IT MUST NOT LAND ON `SUCCESS`. That URL is the conversion: the form page
-   * fires `generate_lead` on `?sent=1` for the no-JavaScript path. Sending
+   * fires `generate_lead` on `?sent=1` for an accepted native form POST. Sending
    * caught spam there lets any bot that runs JavaScript inflate the only
    * conversion the website owns — silently, in a shape that looks like the site
    * performing unusually well, which nobody investigates.
@@ -157,10 +150,24 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   if (!ok) {
     if (wantsHtml(request)) {
       // Carry the failing field names back in the query string so the form can
-      // highlight them without JavaScript having to re-post anything.
+      // highlight them without another browser-side POST.
       return seeOther(`${FORM_PAGE}?invalid=${encodeURIComponent(Object.keys(errors).join(','))}${FORM_ANCHOR}`);
     }
     return json({ ok: false, errors }, 422);
+  }
+
+  const turnstile = await verifyTurnstile(
+    fields['cf-turnstile-response'],
+    secret('TURNSTILE_SECRET_KEY'),
+    new URL(request.url).hostname,
+  );
+  if (!turnstile.ok) {
+    const unavailable = turnstile.reason === 'unavailable';
+    const error = unavailable
+      ? 'Verification is temporarily unavailable. Please try again or contact us by phone.'
+      : 'Please complete the security check again before sending.';
+    if (wantsHtml(request)) return seeOther(`${FORM_PAGE}?failed=1${FORM_ANCHOR}`);
+    return json({ ok: false, error, resetTurnstile: true }, unavailable ? 503 : 403);
   }
 
   const receivedAt = new Date().toISOString();

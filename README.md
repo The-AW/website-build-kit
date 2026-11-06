@@ -97,19 +97,24 @@ The skill loads these as needed rather than all at once.
 ## AW starting point
 
 ```
-Astro, static-first when the site fits → Cloudflare Workers when the project needs it
-→ content in the site's own repository, no CMS by default
-→ first-party form endpoint when required → owner-selected outbound email transport
+Astro when the site fits → Workers Static Assets for a static-only build (no adapter or Worker script)
+→ add a Worker runtime and Astro adapter only for server routes, on-demand rendering or bindings
+→ PagesCMS for owner-editable content, stored in the site's own repository
+→ first-party form endpoint with Turnstile + server-side Siteverify
+→ Brevo email notifications by default, with an owner-approved Slack channel if needed
 ```
 
-This is conditional, not a one-size-fits-all mandate. A purely static Astro site does not need
-the Cloudflare adapter; use it when on-demand routes or Cloudflare bindings are required. Recheck
-the official [Astro Cloudflare integration](https://docs.astro.build/en/guides/integrations-guide/cloudflare/)
+This is conditional, not a one-size-fits-all mandate. A static-only Astro site can deploy `dist/`
+as Workers Static Assets without an Astro adapter, Worker script or runtime bindings. A first-party
+form endpoint or other server route needs a runtime; use the supported adapter for Astro routes and
+bindings. Recheck the official [Astro Cloudflare integration](https://docs.astro.build/en/guides/integrations-guide/cloudflare/)
 and [Cloudflare Workers Astro guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/astro/)
-for each project. The current template has a Brevo notification adapter, but that is not an AW
-provider decision. PagesCMS and Cloudflare Email Service Email Sending are not defaults; Email
-Sending is currently Beta, while Email Routing handles inbound mail rather than form notifications.
-See the [AW migration process](docs/aw-migration-process.md) for constraints and choices.
+for each project. The generic template includes a runtime contact route, Brevo email and a
+Turnstile widget with mandatory server-side Siteverify; its `.pages.yml` must be created for each
+site's content model. It still lacks request rate limiting, Slack delivery, durable notification
+retry and alerting. PagesCMS and Brevo are the selected AW defaults. Cloudflare Email Service Email
+Sending is a researched Beta alternative only; Email Routing is inbound mail, not a form sender.
+See the [AW migration process](docs/aw-migration-process.md).
 
 ## The template
 
@@ -127,8 +132,12 @@ does ship is the skeleton of the parts that take longest to get right:
   section rhythm, the three-card grid, face pairing, headline size, motion duration, focus
   ring, raw hex in components. No browser, so it runs in CI. `build:production` refuses while
   anything is left undecided
-- **Form endpoint** — server-side validation with field errors, honeypot, KV written
-  **before** the email provider is called, and a no-JavaScript path that still works
+- **Form endpoint** — first-party server-side validation, Turnstile/Siteverify, a honeypot and KV
+  written **before** Brevo is called. This generic starter still has no total request-body cap,
+  request rate limiter, duplicate protection, Slack adapter or durable notification retry/alert;
+  add and test those before an AW production form goes live. `npm run test:turnstile` covers token,
+  hostname, action, failure and timeout handling; `npm run test:origin` covers exact-origin checks.
+  `npm run test:form` runs both suites manually, and both also gate every build
 - **Token-protected CSV export** of leads
 - **Environment derivation** — one build variable decides noindex, analytics, canonical host,
   which store leads land in, and who gets notified

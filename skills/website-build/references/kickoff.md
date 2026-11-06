@@ -99,14 +99,14 @@ not hold. Full reasoning and alternatives in [`stacks.md`](stacks.md):
 
 | Ask | Default | Ask properly when |
 | --- | --- | --- |
-| Target framework | Astro | There is a real application surface, not just a site |
-| Host | Cloudflare Workers | They are already committed elsewhere |
+| Target framework | Astro for content-first sites that fit | There is a real application surface, not just a site |
+| Host | Workers Static Assets for static-only output; Worker runtime when server behavior is needed | They are already committed elsewhere or runtime is unsuitable |
 | Media / CDN | Worker assets, R2 past ~15 MB | Image-heavy, video, or client-uploaded media |
-| **Who edits the site after launch** | — | **Always ask.** See below |
-| Transactional email | Brevo | Deliverability is critical, or they have a provider |
+| **Who edits the site after launch** | PagesCMS for owner-editable content | **Always ask.** If no ongoing editorial need exists, record that exception. See below |
+| Form notifications | Brevo email; Slack only if explicitly approved | Confirm recipients, data shared, account owner, staging destination and failure recovery |
 | Mailboxes | Google Workspace — **separate question** | Never send app mail through Workspace SMTP |
 | Analytics | GA4 if asked, else Cloudflare Web Analytics | Ask which report they actually read |
-| Spam | Honeypot; Turnstile if spam appears | Known abuse history |
+| Spam | Cloudflare Turnstile with server-side Siteverify, plus honeypot and rate limiting | Revisit only through an explicit documented decision; Turnstile is the AW baseline |
 | Booking / CRM | None | They already run Jobber, Housecall, HubSpot… |
 | Local listings | GBP + Bing + Apple | Not a service-area business |
 | Accessibility target | WCAG 2.2 AA | Never lower it. Raise the *testing* effort when §1 of `compliance.md` names a deadline |

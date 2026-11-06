@@ -47,9 +47,26 @@ npx wrangler kv namespace list        # confirm both exist with ids
 
 ```bash
 npx wrangler secret put BREVO_API_KEY
+npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put LEADS_EXPORT_TOKEN     # openssl rand -base64 32
 cp .dev.vars.example .dev.vars                 # local only, gitignored
 ```
+
+`PUBLIC_TURNSTILE_SITE_KEY` is a public build-time value, not a secret. Set it in the Cloudflare
+Workers Builds environment, or in the shell for a local production build, and configure the
+widget's allowed hostnames to include the exact staging and production hosts. The site key is
+embedded in page markup; never expose the server-side secret through a `PUBLIC_` variable. A
+production build refuses to proceed without the public key, while `check:secrets` verifies the
+runtime secret after deployment.
+
+The template's CSP explicitly allows the widget iframe from `challenges.cloudflare.com`; it
+deliberately has no effective `script-src`/`default-src`, so the API script is not blocked. If a
+site adds either restrictive directive, also allow `https://challenges.cloudflare.com` for the
+script and frame as Cloudflare [documents](https://developers.cloudflare.com/turnstile/reference/content-security-policy/).
+The official dummy key pair returns hostname `example.com` and omits `action`, so this template's
+strict hostname/action checks intentionally reject it. Use a registered staging widget/secret for
+browser end-to-end tests; `npm run test:form` covers the Siteverify contract and exact-origin
+checks with local test responses. See [Cloudflare's testing-key behavior](https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
 
 **Fill in, in this order** — each one is read by everything after it:
 
@@ -359,11 +376,12 @@ notifications routed to the developer rather than the client.
 ### Forms
 
 ```bash
-H="-H Origin:\ https://$STAGING"
+# valid → 200, a stored record AND a delivered Brevo email. Complete the real
+# staging widget in a browser; its token is short-lived and single-use.
 
-# valid → 200, a stored record AND a delivered email
+# fields without a token → 403, no lead stored or notification sent
 curl -s -X POST "https://$STAGING/api/contact/" -H "Origin: https://$STAGING" \
-  -d 'name=Test&phone=5550000000&email=you@example.com&service=Something else&message=runbook test'
+  -d 'name=Test&phone=5550000000&email=you@example.com&message=missing-token'
 
 # empty → 422 with field errors
 curl -s -X POST "https://$STAGING/api/contact/" -H "Origin: https://$STAGING" -d ''
@@ -396,8 +414,9 @@ curl -s -H "Authorization: Bearer $LEADS_EXPORT_TOKEN" "https://$STAGING/api/lea
 …and that the email actually arrived, in the provider's dashboard. A 200 from a transactional
 API means accepted for delivery, not delivered.
 
-**Then with JavaScript off** — the native POST must still store, still notify, and land on a
-human-readable page.
+**Then with JavaScript off.** Turnstile requires its client script, so the form must fail closed;
+verify it does not store or notify without a token and that the page shows the phone/email
+alternative. Do not reintroduce an unverified no-JavaScript submission path.
 
 ### Accessibility
 

@@ -210,7 +210,9 @@ gate('site.ts absent — refuses legibly, no ENOENT stack', {
  * check-secrets — needs `wrangler`, so it gets a stub on PATH
  * ──────────────────────────────────────────────────────────────────────── */
 
-const EXAMPLE = 'BREVO_API_KEY="xkeysib-..."\nLEADS_EXPORT_TOKEN="a long random string"\n';
+const EXAMPLE =
+  'BREVO_API_KEY="xkeysib-..."\nTURNSTILE_SECRET_KEY="local-only placeholder"\n' +
+  'LEADS_EXPORT_TOKEN="a long random string"\n';
 
 /**
  * A fake `npx` on PATH, so the comparison logic is tested without a network,
@@ -237,8 +239,13 @@ if (process.platform === 'win32') {
     detail: 'skipped on Windows — npx is npx.cmd and a PATH shim will not stand in',
   });
 } else {
-  const bothSet = npxStub(`echo '[{"name":"BREVO_API_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]'`);
+  const bothSet = npxStub(
+    `echo '[{"name":"BREVO_API_KEY"},{"name":"TURNSTILE_SECRET_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]'`,
+  );
   const oneSet = npxStub(`echo '[{"name":"LEADS_EXPORT_TOKEN"}]'`);
+  const missingTurnstile = npxStub(
+    `echo '[{"name":"BREVO_API_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]'`,
+  );
   const notDeployed = npxStub(`echo "workers.api.error.script_not_found" >&2; exit 1`);
   const loggedOut = npxStub(`echo "You are not authenticated. Run wrangler login." >&2; exit 1`);
 
@@ -251,7 +258,7 @@ if (process.platform === 'win32') {
    */
   const demandsJsonFlag = npxStub(
     'case " $* " in\n' +
-      '  *" --format json "*) echo \'[{"name":"BREVO_API_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]\' ;;\n' +
+      '  *" --format json "*) echo \'[{"name":"BREVO_API_KEY"},{"name":"TURNSTILE_SECRET_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]\' ;;\n' +
       '  *) echo "this stub requires --format json" >&2; exit 1 ;;\n' +
       'esac',
   );
@@ -275,6 +282,14 @@ if (process.platform === 'win32') {
     env: { PATH: `${oneSet}:${process.env.PATH}` },
     expect: 1,
     contains: 'BREVO_API_KEY',
+  });
+
+  gate('Turnstile secret missing — must refuse', {
+    script: 'check-secrets.mjs',
+    files: { '.dev.vars.example': EXAMPLE },
+    env: { PATH: `${missingTurnstile}:${process.env.PATH}` },
+    expect: 1,
+    contains: 'TURNSTILE_SECRET_KEY',
   });
 
   gate('worker not deployed — nothing to check, not everything missing', {
@@ -351,7 +366,7 @@ if (process.platform === 'win32') {
     contains: 'BREVO_API_KEY',
   });
 
-  for (const d of [bothSet, oneSet, notDeployed, loggedOut, demandsJsonFlag, prettyTable, noneSet, tooOldForFlag]) {
+  for (const d of [bothSet, oneSet, missingTurnstile, notDeployed, loggedOut, demandsJsonFlag, prettyTable, noneSet, tooOldForFlag]) {
     rmSync(d, { recursive: true, force: true });
   }
 }
@@ -471,7 +486,7 @@ const headersFile = [
   STAR,
   '  Referrer-Policy: strict-origin-when-cross-origin',
   '  Permissions-Policy: geolocation=(), camera=()',
-  "  Content-Security-Policy: default-src 'self'",
+  "  Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-src 'self' https://challenges.cloudflare.com",
   '',
   '/_astro/' + '*',
   '  Cache-Control: public, max-age=31536000, immutable',

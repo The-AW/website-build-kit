@@ -9,8 +9,9 @@ deploy, wrong result. Check this list before debugging anything strange.
   save, and keys nobody touched are gone from the repo — a CMS rewrites the whole file from its
   schema, so anything the schema does not declare is absent from what it writes back. Not
   flagged, not merged; in the diff it reads as an ordinary content commit. Full rule in
-  `stacks.md` §4. It lives there rather than here because **the kit ships no CMS** — you pick one
-  per project, so there is nothing in the template to gate and no schema for a check to read.
+  `stacks.md` §4. The generic template ships no `.pages.yml`, although PagesCMS is the selected AW
+  default for owner-editable content. Add a site-specific schema and run `npm run check:cms` before
+  editors use it; until then there is no CMS schema for the check to validate.
 
 ---
 

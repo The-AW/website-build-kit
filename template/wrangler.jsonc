@@ -74,5 +74,6 @@
 
   // Secrets — set with `wrangler secret put <NAME>`, never in this file:
   //   BREVO_API_KEY   Brevo transactional email key
+  //   TURNSTILE_SECRET_KEY   server-side Siteverify secret; never a PUBLIC_ variable
   //   LEADS_EXPORT_TOKEN   bearer token for GET /api/leads.csv
 }
