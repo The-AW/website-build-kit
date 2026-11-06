@@ -57,7 +57,7 @@ routes that ignore its URLs.
 ## Recon — it goes and looks
 
 ```
-● Bash(npx degit nurkamol/website-build-kit/template . && npm install)
+● Bash(npx degit The-AW/website-build-kit/template . && npm install)
   ⎿  installed
 
 ● Bash(npm run recon -- https://example.com)
@@ -242,8 +242,8 @@ quickly is the failure the method exists to prevent.
 ## Build
 
 ```
-● Bash(npx degit nurkamol/website-build-kit/template .)
-  ⎿  cloned nurkamol/website-build-kit#HEAD
+● Bash(npx degit The-AW/website-build-kit/template .)
+  ⎿  cloned The-AW/website-build-kit#HEAD
 
 ● Write(BUILD-STATE.md)
 ● Phase 0 gate passed. Starting extraction.

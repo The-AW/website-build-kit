@@ -6,7 +6,7 @@ end to end, see [how-to-start.md](how-to-start.md).
 ## Install
 
 ```bash
-git clone git@github.com:nurkamol/website-build-kit.git ~/coding/website-build-kit
+git clone https://github.com/The-AW/website-build-kit.git ~/coding/website-build-kit
 cd ~/coding/website-build-kit
 ./install.sh              # symlinks — updates when you pull
 ./install.sh --copy       # copies instead, if you prefer snapshots
@@ -46,7 +46,7 @@ off Elementor" or "does our site meet WCAG?" picks it up without the command.
 ## Setting up a new site from the template
 
 ```bash
-npx degit nurkamol/website-build-kit/template my-site
+npx degit The-AW/website-build-kit/template my-site
 cd my-site && npm install
 ```
 
@@ -56,8 +56,9 @@ Then, in order. Each step is read by everything after it:
 
 1. **`src/data/business.ts`** — name, phone, address, hours, service areas. Everything else
    reads from it, including the structured data
-2. **`src/data/services.ts`**, `areas.ts`, `categories.ts` — on a migration, category slugs must
-   match the source CMS exactly or every `/category/<slug>/` URL breaks
+2. **`src/data/services.ts`**, `areas.ts`, `categories.ts` — on a migration, preserve source
+   taxonomy and URL slugs exactly, whether the source was a CMS or a static file tree, or every
+   `/category/<slug>/` URL breaks
 3. **`src/styles/tokens.css`** — brand colours and the type scale
 4. **`src/data/site.ts`** — `PRODUCTION_HOSTS`, and the client's **own** analytics IDs. Leave
    them empty rather than inheriting an ID from another project

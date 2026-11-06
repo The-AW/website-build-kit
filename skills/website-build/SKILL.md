@@ -35,7 +35,7 @@ If the stack is the default, fetch the template now rather than at build time �
 does the mechanical half and writes the inventory every later step reads:
 
 ```bash
-npx degit nurkamol/website-build-kit/template .
+npx degit The-AW/website-build-kit/template .
 npm install && npm run recon -- https://site.com     # → recon/urls.txt, preserved, integrations
 npx pa11y-ci --sitemap https://site.com/sitemap.xml --standard WCAG2AA
 ```
@@ -85,7 +85,7 @@ If the stack is the default one, start from the template. **It does not ship wit
 — fetch it into the project directory:
 
 ```bash
-npx degit nurkamol/website-build-kit/template .     # empty dir; use my-site to make one
+npx degit The-AW/website-build-kit/template .       # empty dir; use my-site to make one
 ```
 
 Then follow `docs/runbook.md` §1 inside it — Node 22.12+, KV namespaces, secrets, and the
@@ -106,11 +106,12 @@ deleted.
 
 ## Defaults
 
-Astro static → Cloudflare Workers → assets on the worker (R2 past ~15 MB) → PagesCMS →
-Brevo → KV → GA4 or Cloudflare Web Analytics → Turnstile.
-
-Deviate on evidence. `references/stacks.md` gives every alternative and the specific
-condition that justifies it.
+Astro, static-first, for content-first sites that fit → Cloudflare Workers with static assets;
+use the Astro adapter only for on-demand routes or bindings → file-based content in each site's
+own repository, no CMS by default → first-party form endpoint when needed → owner-selected
+outbound email transport. Do not use LeadConnector. Astro/Workers is conditional, not a blanket
+mandate; pure static sites do not need the adapter. See `references/stacks.md` and the AW process
+docs below.
 
 ## Non-negotiables
 
@@ -180,3 +181,5 @@ Read `references/traps.md`. Entries that recur across projects:
 | `references/build.md` | Standing instructions, phases, stack profile, definition of done |
 | `references/compliance.md` | Which accessibility law binds this client; what to build, test, publish |
 | `references/traps.md` | Silent failures, with symptom and fix |
+| [`../../docs/aw-migration-process.md`](../../docs/aw-migration-process.md) | AW repository boundaries, migration gates, form/email architecture and rollout limits |
+| [`../../docs/aw-migration-checklist.md`](../../docs/aw-migration-checklist.md) | Checklist to copy into each site's own repository |

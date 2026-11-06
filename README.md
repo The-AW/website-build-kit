@@ -28,14 +28,14 @@ Not a theme. The value is the accumulated set of decisions and the list of thing
 **silently** — clean build, clean types, clean deploy, wrong result.
 
 ```bash
-/plugin marketplace add nurkamol/website-build-kit
+/plugin marketplace add The-AW/website-build-kit
 /plugin install website-build@website-build-kit
 ```
 
 Or clone and symlink, if you would rather not add a marketplace:
 
 ```bash
-git clone https://github.com/nurkamol/website-build-kit.git
+git clone https://github.com/The-AW/website-build-kit.git
 cd website-build-kit && ./install.sh
 ```
 
@@ -54,6 +54,12 @@ works too if you want to be explicit.
 
 **→ [docs/how-to-start.md](docs/how-to-start.md)** — the three entry points, what to have
 ready before you begin, and what the first ten minutes should look like.
+
+**→ [docs/aw-migration-process.md](docs/aw-migration-process.md)** — AW's site-specific migration
+baseline, including content, form/email architecture and deployment boundaries.
+
+**→ [docs/aw-migration-checklist.md](docs/aw-migration-checklist.md)** — the phase-gated checklist
+to copy into each site's own repository.
 
 ## What's in it
 
@@ -88,15 +94,22 @@ The skill loads these as needed rather than all at once.
 
 `traps.md` is the one that earns its keep. Everything in it cost real debugging time.
 
-## Defaults
+## AW starting point
 
 ```
-Astro static → Cloudflare Workers → worker assets (R2 past ~15 MB)
-→ PagesCMS → Brevo → KV → GA4 or Cloudflare Web Analytics → Turnstile
+Astro, static-first when the site fits → Cloudflare Workers when the project needs it
+→ content in the site's own repository, no CMS by default
+→ first-party form endpoint when required → owner-selected outbound email transport
 ```
 
-Chosen because they are light, cheap at this scale, and compose without glue. Every one has
-alternatives in `stacks.md` with the specific condition that would justify switching.
+This is conditional, not a one-size-fits-all mandate. A purely static Astro site does not need
+the Cloudflare adapter; use it when on-demand routes or Cloudflare bindings are required. Recheck
+the official [Astro Cloudflare integration](https://docs.astro.build/en/guides/integrations-guide/cloudflare/)
+and [Cloudflare Workers Astro guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/astro/)
+for each project. The current template has a Brevo notification adapter, but that is not an AW
+provider decision. PagesCMS and Cloudflare Email Service Email Sending are not defaults; Email
+Sending is currently Beta, while Email Routing handles inbound mail rather than form notifications.
+See the [AW migration process](docs/aw-migration-process.md) for constraints and choices.
 
 ## The template
 
@@ -282,13 +295,14 @@ does ship is the skeleton of the parts that take longest to get right:
   rather than a developer, rendered to PDF by `npm run handover`
 
 ```bash
-npm create website-build-kit@latest my-site
+npx degit The-AW/website-build-kit/template my-site
+cd my-site && npm install
 ```
 
-It checks your Node version before writing anything, restores the `.gitignore` npm strips from
-published packages, names the project after the directory, and installs. `npx degit
-nurkamol/website-build-kit/template my-site` still works if you would rather not run a
-scaffolder.
+For AW projects, scaffold from this fork so the site receives the current AW process and template.
+The inherited `create-website-build-kit` npm package is published separately by upstream and
+does not automatically include changes from this fork; use it for AW work only after AW publishes
+a matching version.
 
 Node 22.12+. It builds green with no content, no images and no secrets. Fill in
 `src/data/business.ts` first — everything else reads from it. Then `npm run tells` will tell

@@ -420,3 +420,27 @@ Written for someone tired and mid-problem.
 Extracted from getmiohome.com and expressducttest.com, both WordPress rebuilds onto Astro +
 Cloudflare Workers. When adding something, name the build it came from — it is what
 separates this from a listicle.
+
+## AW migration baseline
+
+The existing fork `The-AW/website-build-kit` is the process and starter source for AW work; do
+not create a duplicate kit repository. Keep every client/site in a separate repository with its
+own `README.md`, persistent `CLAUDE.md`, content, assets, configuration and secrets. Never put
+client-specific URLs, content, screenshots, analytics IDs, credentials or form submissions in
+this public kit.
+
+For AW sites, file-based content in the site repository is the default; do not assume PagesCMS or
+another CMS. Cloudflare EmDash is a future evaluation only. Astro with Cloudflare Workers is a
+conditional starting point for content-first sites that fit: static output can use Workers
+assets without the Astro adapter, while on-demand routes or bindings require the current supported
+adapter path. Recheck the official Astro/Cloudflare guide for each project.
+
+Do not use LeadConnector for contact forms. Prefer a source-controlled same-origin form endpoint
+in the site repository and choose storage and outbound email separately. The current template's
+Brevo adapter is not an AW provider decision. Cloudflare Email Routing is inbound forwarding;
+Cloudflare Email Service Email Sending is a separate Beta outbound product. Neither product
+choice nor any DNS/MX change is automatic; capture records read-only and get separate approval
+before changing production mail flow or deploying.
+
+Use [`docs/aw-migration-process.md`](docs/aw-migration-process.md) for the reusable method and
+[`docs/aw-migration-checklist.md`](docs/aw-migration-checklist.md) for each site's copy.

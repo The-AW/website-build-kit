@@ -147,7 +147,7 @@ Then watch the first week. `runbook.md` §4 has the table.
 If you already know every answer and just want the skeleton:
 
 ```bash
-npx degit nurkamol/website-build-kit/template my-site
+npx degit The-AW/website-build-kit/template my-site
 cd my-site && npm install && npm run dev
 ```
 

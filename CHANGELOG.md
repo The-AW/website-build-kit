@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-06 — AW migration process (unreleased)
+
+Added a reusable AW migration process and per-site checklist. Removed PagesCMS/Brevo as AW
+defaults, made Astro + Cloudflare Workers conditional on verified site fit, documented the
+first-party contact endpoint and Cloudflare Email Routing versus Email Sending Beta, and updated
+the existing website-build skill to scaffold from the AW fork. Site-specific content remains in
+separate site repositories.
+
 ## 2026-10-29 — 0.1.23, and the Monday audit went red under no commit at all
 
 `.github/workflows/audit.yml` shipped in 0.1.22 to separate the world moving from this repository

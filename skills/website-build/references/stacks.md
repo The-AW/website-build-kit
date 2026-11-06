@@ -3,10 +3,14 @@
 Every decision that has a default, what the default is, and the specific reason you would
 deviate. Read alongside `kickoff.md` (discovery) and `website-build.md` (how to build).
 
-**The house default, in one line:** Astro static → Cloudflare Workers → assets on the worker
-(R2 past ~15 MB) → PagesCMS → Brevo → KV → GA4 + Cloudflare Web Analytics → Turnstile.
+**AW starting point, only when the site fits:** Astro static-first → Cloudflare Workers with static
+assets, adding the official adapter only for on-demand routes or bindings → file-based content in
+the site's own repository, with no CMS by default → first-party form endpoint when needed → an
+owner-selected outbound email transport. Storage, analytics and bot controls are separate decisions.
 
-Deviate on evidence, not preference. Every row below says what that evidence looks like.
+Verify the current Astro/Cloudflare framework guide and the site's actual runtime needs at kickoff.
+Deviate on evidence, not preference. The reusable AW process is in
+[`docs/aw-migration-process.md`](../../../docs/aw-migration-process.md).
 
 ---
 
@@ -117,7 +121,7 @@ anyone still using the data in it.**
 | Bolted on | What it forces | Default |
 | --- | --- | --- |
 | **GA4 / GTM / Ads / Meta pixel** | IDs must carry over *exactly*, or reporting breaks at the join. Conversion goals are usually configured against the **old URLs and old form selectors** — both change | Port the IDs, re-point the goals, production-only. Confirm who has admin before launch day |
-| **CRM or booking** — HubSpot, Jobber, Housecall Pro, ServiceTitan, Calendly, Cal.com, Acuity | The form is not the deliverable; the **record in their system** is. Field names and hidden source fields must match or leads land unattributed | Keep their tool, re-point the form. Never migrate a CRM as part of a website rebuild |
+| **CRM or booking** — HubSpot, Jobber, Housecall Pro, ServiceTitan, Calendly, Cal.com, Acuity | The form is not the deliverable; the **record in their system** is. Field names and hidden source fields must match or leads land unattributed | Keep only an explicitly approved system and re-point its form. AW does not use LeadConnector; replace it with a first-party endpoint unless the owner approves another target. Never migrate a CRM as part of a website rebuild |
 | **Email marketing** — Mailchimp, Klaviyo, Brevo lists | List subscription is a *different* integration from transactional mail, and clients conflate them. Double opt-in flows have their own hosted pages and URLs | Keep the provider, port the signup form. Transactional stays separate — see §5 |
 | **Payments** — Stripe, PayPal, WooCommerce | If money moves, this is no longer a marketing-site brief. Read the note in §1 on Shopify | Leave commerce where it is. Marketing pages migrate; checkout does not |
 | **Membership / gated content** — MemberPress, WooCommerce Memberships | Authentication and per-user state. Out of scope for this kit, and it will not shrink | Say so before quoting, not after |
@@ -357,11 +361,15 @@ redirect are invisible otherwise, and the next person re-adds them:
 
 ## 2. Choosing the target stack
 
-### Default: Astro
+### AW baseline: Astro for content-first sites
 
-Static output, zero JavaScript unless a component asks for it, first-class Cloudflare
-adapter, content collections with schema validation, islands when you need interactivity.
-For a marketing site this is the right answer often enough that deviation needs a reason.
+Static output, zero JavaScript unless a component asks for it, content collections with schema
+validation, and islands when needed. Astro is the starting point for a marketing/content site whose
+pages can be rendered at build time and whose runtime needs fit Workers. A dashboard, substantial
+authenticated application or incompatible runtime is a reason to choose differently. Cloudflare's
+current guide supports a static-assets path without the Astro adapter and adapter-based on-demand
+routes/bindings; do not add the adapter to a purely static site merely because it is the kit's
+current template.
 
 ### When to pick something else
 
@@ -384,7 +392,7 @@ dashboard is Next/Remix/SvelteKit — and probably two projects, not one.
 
 | Option | When |
 | --- | --- |
-| **Cloudflare Workers** ✅ default | Static assets + a runtime where needed, KV/R2/D1 in the same place, no cold starts, no egress fees |
+| **Cloudflare Workers** ✅ AW baseline when account and runtime fit | Static assets plus a runtime where needed; use the current Astro adapter only for on-demand routes/bindings |
 | Cloudflare Pages | Legacy path; Workers with static assets is where Cloudflare is investing. New projects go to Workers |
 | Vercel | Next.js with ISR and edge middleware you actually use. Watch bandwidth pricing |
 | Netlify | Existing team familiarity, Netlify-specific integrations |
@@ -452,14 +460,17 @@ stops matching. See `traps.md`. Turn AVIF off for a project with `FORMATS = ['we
 
 ---
 
-## 4. Git-based CMS
+## 4. Optional CMS — never an AW default
 
-Only if a non-technical person must publish without a deploy. If developers are the only
-editors, markdown in the repo is faster and has no failure mode.
+AW starts with file-based content in the site repository. Add a CMS only if the owner explicitly
+needs non-developer publishing and the workflow justifies its operational and data-loss risks. If
+developers are the only editors, Markdown/JSON in Git is faster and has no additional CMS service.
+Cloudflare EmDash is a possible future evaluation, not an assumed current integration; verify its
+then-current maturity, hosting, authoring and export behavior if that decision is reopened.
 
 | Option | When | Notes |
 | --- | --- | --- |
-| **PagesCMS** ✅ default on GitHub | Astro/11ty/Hugo content, GitHub-hosted | Free, hosted, YAML config in the repo, GitHub OAuth. No build step, no self-hosting |
+| **PagesCMS** | Astro/11ty/Hugo content, GitHub-hosted, when owner-approved | Free, hosted, YAML config in the repo, GitHub OAuth. No build step, no self-hosting |
 | **Keystatic** | Astro or Next, want types and local editing | Thinkmill. First-class Astro integration, edits locally against the filesystem or via GitHub. Excellent for typed collections |
 | **Sveltia CMS** | You want Decap's config with a modern UI | Drop-in Decap replacement, much faster, better media handling |
 | **Decap CMS** | Legacy projects already using it | Mature but ageing; auth needs its own backend outside Netlify |
@@ -746,12 +757,13 @@ changes, existing projects do not get it; say so in the handover or check it at 
 
 | Option | When | Notes |
 | --- | --- | --- |
-| **Brevo** ✅ default | Small business, generous free tier, marketing email in the same account later | Simple REST API, one `fetch`, good deliverability |
+| **Owner-selected transactional provider** ✅ AW rule | The project needs form notifications, receipts or confirmations | Choose per site; verified sender, secrets, staging recipient separation and failure behavior are required. The current template's Brevo adapter is an option, not a default |
 | **Resend** | Developer-first, want React Email templates | Clean API and DX. Newer, smaller free tier |
 | **Postmark** | Deliverability is critical and you will pay for it | Best-in-class transactional reputation, separate streams |
 | **AWS SES** | High volume, already on AWS | Cheapest at scale. Needs warm-up and reputation management |
 | **Mailgun / SendGrid** | Existing account or specific integration | Fine; nothing they do the above do not |
-| **Cloudflare Email** | Inbound routing is free and excellent. Sending is newer — check maturity before depending on it | MailChannels' free Workers relay is gone; do not follow old tutorials |
+| **Cloudflare Email Routing** | The owner wants inbound aliases forwarded to an existing inbox or processed by a Worker | Inbound only, not a contact-form outbound sender or hosted mailbox. Requires Cloudflare DNS and changes root MX records; review current mail flow first |
+| **Cloudflare Email Service Email Sending** | Worker-native transactional notifications if the owner accepts Beta | Separate from Email Routing; native `send_email` binding. Arbitrary recipients require Workers Paid, with quotas and sending-domain DNS setup. Pilot only after explicit plan, deliverability and DNS approval |
 
 **Google Workspace is not a transactional provider.** It gives the business real mailboxes at
 their domain — get it for that. Sending app notifications through Workspace SMTP hits
@@ -973,19 +985,19 @@ recommendation, not a code one — say so anyway.
 
 ---
 
-## 10. The default stack, assembled
+## 10. Example stack for a local-services site
 
-For a local services business — the most common brief:
+For a local services business — the most common brief, **if the project fits and the owner has approved the integrations**:
 
 ```
 Source        WordPress + Elementor  → crawl rendered HTML, mine SEO plugin export
 Framework     Astro 7, output: static
 Host          Cloudflare Workers, single worker, build variable decides environment
 Media         Build-time sharp → WebP + manifest, served from worker assets
-CMS           None, or PagesCMS if the client publishes
+CMS           None by default; add only after an owner-approved editorial need
 Forms         Astro API route, prerender = false
 Storage       Cloudflare KV, lead:<iso>:<uuid>, written before any third-party call
-Email         Brevo transactional, verified sender, recipient env-derived
+Email         Owner-selected transactional transport; the kit's Brevo adapter is optional
 Spam          Honeypot + server validation; Turnstile if spam appears
 Analytics     GA4 + GTM if asked, else Cloudflare Web Analytics. Production only
 Search        Search Console + Bing Webmaster

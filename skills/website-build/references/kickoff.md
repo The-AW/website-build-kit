@@ -137,9 +137,9 @@ Ask it as its own question, with the consequence attached rather than the produc
 >   chafe. Worth pricing a headless CMS, and worth saying out loud that it adds a network
 >   dependency to every build
 
-`stacks.md` §4 picks the product once the answer is known — PagesCMS is the default on GitHub,
-Keystatic when you want typed collections, and the rule is git-based unless they publish several
-times a week or have more than a handful of editors.
+`stacks.md` §4 covers CMS choices only if an owner-approved editorial need exists. AW's default is
+file-based content in the site's repository; PagesCMS, Keystatic or a future EmDash evaluation are
+not assumed or installed automatically.
 
 ### Round 3 — Design direction and mobile
 

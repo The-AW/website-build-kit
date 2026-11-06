@@ -1,7 +1,9 @@
 # The template
 
-An Astro + Cloudflare Workers skeleton. It builds green with no content, no images and no
-secrets — then you fill it in.
+An Astro starter for content-first marketing sites. The current template uses static output with
+Cloudflare Workers assets and the Cloudflare adapter for its runtime route/bindings. A purely
+static Astro site does not need the adapter; verify the project's actual needs against the current
+official guides. It builds green with no content, no images and no secrets — then you fill it in.
 
 Node **22.12+** (Astro's floor). `.node-version` pins **24.19.0** — the active LTS, the version it is tested on
 and the one CI reads.
@@ -191,7 +193,9 @@ where you look at half-finished work.
 - Card, band and grid styles — `global.css` carries states, not a look
 - A brand overlay / preloader — a measured ~160ms of LCP, so a decision, not a default
 - Page layouts beyond a contact page
-- A CMS — add PagesCMS or Keystatic only if someone non-technical publishes
+- A CMS — **none by default**. Keep content in the site's repository; add an editor only after an
+  owner asks for non-developer publishing. PagesCMS and Keystatic are optional choices, not
+  assumptions. Cloudflare EmDash is a future evaluation only, not a current dependency.
 - Any legal *content* — `src/content/legal/` ships the route, the schema and the footer
   wiring, and not one word of a policy. Nobody should inherit a privacy notice
 - Testimonials, pricing, galleries — project-shaped, not skeleton-shaped
@@ -230,8 +234,11 @@ where you look at half-finished work.
 
 **Before go-live**
 
-- [ ] Secrets: `BREVO_API_KEY`, `LEADS_EXPORT_TOKEN`
-- [ ] Verified sender at the email provider, SPF + DKIM + DMARC
+- [ ] Select the owner-approved outbound email transport; the current template supports
+      `BREVO_API_KEY`, but that is not an AW default. Cloudflare Email Service Email Sending is
+      currently Beta; Email Routing is inbound-only.
+- [ ] Verified sender at the selected provider, SPF + DKIM + DMARC; review before any DNS change
+- [ ] `LEADS_EXPORT_TOKEN` set only if a protected export route is actually used
 - [ ] `src/pages/accessibility.astro` — dates, known gaps, a contact route that works
 - [ ] `.pa11yci.json` — a URL for every template family
 - [ ] `public/site.webmanifest` — name and description match `business.ts`
