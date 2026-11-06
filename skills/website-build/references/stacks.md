@@ -3,10 +3,17 @@
 Every decision that has a default, what the default is, and the specific reason you would
 deviate. Read alongside `kickoff.md` (discovery) and `website-build.md` (how to build).
 
-**The house default, in one line:** Astro static → Cloudflare Workers → assets on the worker
-(R2 past ~15 MB) → PagesCMS → Brevo → KV → GA4 + Cloudflare Web Analytics → Turnstile.
+**AW starting point, only when the site fits:** Astro static-first → Workers Static Assets for a
+static-only build (no adapter, Worker script or runtime bindings) → add a Worker runtime and the
+supported Astro adapter only for server routes, on-demand rendering or bindings → file-based content
+in the site's own repository; no CMS is selected (EmDash is a future possibility only) → first-party
+form endpoint with Cloudflare Turnstile validated by server-side Siteverify → email/Slack notification
+transport pending, with no provider or channel selected.
+Storage and analytics remain separate decisions.
 
-Deviate on evidence, not preference. Every row below says what that evidence looks like.
+Verify the current Astro/Cloudflare framework guide and the site's actual runtime needs at kickoff.
+Deviate on evidence, not preference. The reusable AW process is in
+[`docs/aw-migration-process.md`](../../../docs/aw-migration-process.md).
 
 ---
 
@@ -117,13 +124,13 @@ anyone still using the data in it.**
 | Bolted on | What it forces | Default |
 | --- | --- | --- |
 | **GA4 / GTM / Ads / Meta pixel** | IDs must carry over *exactly*, or reporting breaks at the join. Conversion goals are usually configured against the **old URLs and old form selectors** — both change | Port the IDs, re-point the goals, production-only. Confirm who has admin before launch day |
-| **CRM or booking** — HubSpot, Jobber, Housecall Pro, ServiceTitan, Calendly, Cal.com, Acuity | The form is not the deliverable; the **record in their system** is. Field names and hidden source fields must match or leads land unattributed | Keep their tool, re-point the form. Never migrate a CRM as part of a website rebuild |
-| **Email marketing** — Mailchimp, Klaviyo, Brevo lists | List subscription is a *different* integration from transactional mail, and clients conflate them. Double opt-in flows have their own hosted pages and URLs | Keep the provider, port the signup form. Transactional stays separate — see §5 |
+| **CRM or booking** — HubSpot, Jobber, Housecall Pro, ServiceTitan, Calendly, Cal.com, Acuity | The form is not the deliverable; the **record in their system** is. Field names and hidden source fields must match or leads land unattributed | Keep only an explicitly approved system and re-point its form. AW does not use LeadConnector; replace it with a first-party endpoint unless the owner approves another target. Never migrate a CRM as part of a website rebuild |
+| **Email marketing** — client newsletter/list service | List subscription is a *different* integration from transactional mail, and clients conflate them. Double opt-in flows have their own hosted pages and URLs | Keep the provider, port the signup form. Transactional stays separate — see §5 |
 | **Payments** — Stripe, PayPal, WooCommerce | If money moves, this is no longer a marketing-site brief. Read the note in §1 on Shopify | Leave commerce where it is. Marketing pages migrate; checkout does not |
 | **Membership / gated content** — MemberPress, WooCommerce Memberships | Authentication and per-user state. Out of scope for this kit, and it will not shrink | Say so before quoting, not after |
 | **Live chat** — Intercom, Crisp, Tawk, Drift | Costs LCP on every page and usually nobody is answering it | Ask for 30 days of response-time data. If replies take hours, a phone number outperforms it |
 | **Reviews** — Trustpilot, Birdeye, Yotpo widgets | Page weight, and the schema often duplicates yours | Static hand-picked quotes + `Review` schema, unless the live badge is contractual |
-| **Spam** — reCAPTCHA v2/v3 | Google's key does not move to a new domain automatically, and v3 scores need tuning per site | Honeypot + server validation; Turnstile when spam appears |
+| **Spam** — reCAPTCHA v2/v3 | Google's key does not move to a new domain automatically, and v3 scores need tuning per site | AW baseline: Cloudflare Turnstile with server-side Siteverify, plus honeypot and rate limiting |
 | **Consent banner** — CookieYes, Cookiebot, Complianz | Usually configured for cookies the new site will not set. Porting it wholesale describes tracking that no longer happens | Re-derive from what the new site actually sets. Often: nothing needed |
 | **Search / heatmaps** — Hotjar, Clarity, Algolia | Rarely load-bearing, frequently forgotten in the bill | Ask whether anyone opened it this quarter |
 | **Custom plugin behaviour** — quote calculators, availability lookups, price tables | The one category with no drop-in replacement. It is bespoke work and needs its own estimate | Inventory it explicitly and price it separately, before agreeing a scope |
@@ -170,7 +177,7 @@ Give the client one message with exactly what to fetch, where to click, and the 
 | **Google Ads** | Conversion ID `AW-…` + label | Goals → Conversions → the action → Tag setup | [Google Ads help](https://support.google.com/google-ads) |
 | **Search Console** | Verification method already in use, and *ownership* | Settings → Ownership verification | [Verify your site](https://support.google.com/webmasters/answer/9008080) |
 | **Meta Pixel** | Pixel ID (15–16 digits) | Events Manager → Data sources → the pixel | [Meta Pixel docs](https://developers.facebook.com/docs/meta-pixel) |
-| **Brevo** | API v3 key + a **verified** sender address | Profile → SMTP & API → API keys | [Brevo developers](https://developers.brevo.com/) |
+| **Transactional email provider** | Provider account + verified sender, only if the owner has selected one | Use the provider's official setup docs |
 | **Mailchimp** | API key + audience ID | Account → Extras → API keys; Audience → Settings | [Mailchimp developer](https://mailchimp.com/developer/) |
 | **Klaviyo** | Public API key (site ID) + list ID | Settings → API keys | [Klaviyo developers](https://developers.klaviyo.com/) |
 | **HubSpot** | Portal ID + form GUID | Settings → Account; Marketing → Forms → Embed | [HubSpot developers](https://developers.hubspot.com/) |
@@ -357,11 +364,15 @@ redirect are invisible otherwise, and the next person re-adds them:
 
 ## 2. Choosing the target stack
 
-### Default: Astro
+### AW baseline: Astro for content-first sites
 
-Static output, zero JavaScript unless a component asks for it, first-class Cloudflare
-adapter, content collections with schema validation, islands when you need interactivity.
-For a marketing site this is the right answer often enough that deviation needs a reason.
+Static output, zero JavaScript unless a component asks for it, content collections with schema
+validation, and islands when needed. Astro is the starting point for a marketing/content site whose
+pages can be rendered at build time and whose runtime needs fit Workers. A dashboard, substantial
+authenticated application or incompatible runtime is a reason to choose differently. Cloudflare's
+current guide supports a static-assets path without the Astro adapter and adapter-based on-demand
+routes/bindings; do not add the adapter to a purely static site merely because it is the kit's
+current template.
 
 ### When to pick something else
 
@@ -384,7 +395,7 @@ dashboard is Next/Remix/SvelteKit — and probably two projects, not one.
 
 | Option | When |
 | --- | --- |
-| **Cloudflare Workers** ✅ default | Static assets + a runtime where needed, KV/R2/D1 in the same place, no cold starts, no egress fees |
+| **Cloudflare Workers** ✅ AW baseline when account and runtime fit | Static assets plus a runtime where needed; use the current Astro adapter only for on-demand routes/bindings |
 | Cloudflare Pages | Legacy path; Workers with static assets is where Cloudflare is investing. New projects go to Workers |
 | Vercel | Next.js with ISR and edge middleware you actually use. Watch bandwidth pricing |
 | Netlify | Existing team familiarity, Netlify-specific integrations |
@@ -452,322 +463,34 @@ stops matching. See `traps.md`. Turn AVIF off for a project with `FORMATS = ['we
 
 ---
 
-## 4. Git-based CMS
+## 4. Content — file-based default
 
-Only if a non-technical person must publish without a deploy. If developers are the only
-editors, markdown in the repo is faster and has no failure mode.
+AW content stays in version-controlled files in the site's own repository. Use Markdown for long-form
+content and JSON/typed data modules where structured records need validation; keep one source of truth,
+keep technical configuration and secrets out of editable content, and make every change reviewable.
 
-| Option | When | Notes |
-| --- | --- | --- |
-| **PagesCMS** ✅ default on GitHub | Astro/11ty/Hugo content, GitHub-hosted | Free, hosted, YAML config in the repo, GitHub OAuth. No build step, no self-hosting |
-| **Keystatic** | Astro or Next, want types and local editing | Thinkmill. First-class Astro integration, edits locally against the filesystem or via GitHub. Excellent for typed collections |
-| **Sveltia CMS** | You want Decap's config with a modern UI | Drop-in Decap replacement, much faster, better media handling |
-| **Decap CMS** | Legacy projects already using it | Mature but ageing; auth needs its own backend outside Netlify |
-| **TinaCMS** | Client wants visual, in-context editing | Git-backed with a cloud tier for auth. Heavier setup |
-| **CloudCannon** | Agency handing over to a non-technical client who needs real support | Commercial, polished, visual editing |
-
-**Headless (not git-based) — when the content genuinely needs a database:** Sanity for
-structured content and real-time collaboration; Storyblok for marketer-friendly visual
-editing; Payload or Directus when you want to self-host; Contentful for enterprise
-procurement. All add a network dependency to your build and a second place content can be
-wrong.
-
-**Rule:** git-based unless the client publishes several times a week, needs draft
-collaboration, or has more than a handful of editors.
-
-**Choosing a CMS is a content-architecture decision, not an installation step.** Inventory the
-site, model the content that actually exists, keep one source of truth, protect the technical
-configuration, and verify the client can find things without knowing Astro or the repo layout.
-⚠ **The complexity of the CMS follows the complexity of the project** — never create a Team
-collection with no team, Locations for one location, or an empty category. An empty section is
-worse than an absent one: it reads as broken.
-
-### Decide what goes in the CMS before configuring one
-
-**Converting a site whose content already lives in code** — splitting modules into JSON with a
-typed façade, grouping by how nervously a thing is edited, choosing field types by what a wrong
-value costs — is a procedure rather than a rule, and it is written up in
-[site-runbooks](https://github.com/nurkamol/site-runbooks) (`pagescms-field-mapping.md`). ⚠ **Run
-`npm run check:cms` first**: it already detects the three things that runbook's audit phase looks
-for — content living in code, data files with no form behind them, and keys inside a declared file
-with no field.
-
-
-⚠ **"Professional CMS" does not mean making every string editable.** It means the right things
-are editable and the rest is protected. Inventory the site first — routes, content collections,
-`src/data`, navigation, services, testimonials, FAQs, legal pages, forms, SEO metadata, JSON-LD —
-and put every value in one of five buckets:
-
-| | | |
-| --- | --- | --- |
-| **Editorial content** | copy, photos, prices, hours, staff | CMS-managed |
-| **Editorial configuration** | featured flags, ordering, a global CTA | may be CMS-managed |
-| **Design / presentation** | spacing, variants, component choice | stays in code |
-| **Technical configuration** | routes, redirects, canonical rules, build config | developer-controlled |
-| **Secrets** | API keys, tokens, analytics IDs, environment variables | ⚠ **never** in a CMS |
-
-The deciding question is not technical:
-
-> **Would a reasonable non-technical owner expect to update this after handover?**
-
-If no, it does not belong in the CMS — and if it is in the same *file* as something that does,
-that file is the problem. `getmiohome.com` had `analytics` sitting in the same `site.json` as the
-business name; the client never had to touch it for it to be deleted.
-
-⚠ **Never expose `robots.txt`, or a raw redirects file, to a client.** A CMS can edit any file in
-the repo, which makes this easy to do and unrecoverable to notice: a client who blocks the site in
-`robots.txt` sees no error, no broken page and no failed build. Traffic simply stops, and the
-cause is a file nobody thinks to re-read. Advanced SEO files belong to the developer, or to an
-editor who has explicitly asked for them and understands the consequence.
-
-### Fields the client can actually use
-
-A field is part of the deliverable, not a wrapper around a key name.
-
-- **Label it in the client's language.** `Meta description`, `Booking URL`, `Featured service` —
-  never `desc`, `url2`, `isFeat`.
-- **Constrain what can be typed.** A select beats free text; a reference beats a re-typed name; a
-  required field beats a validation rule nobody reads. The failure a constrained field cannot
-  represent is a failure that cannot happen.
-- **Describe only where it is ambiguous.** A description on an obvious field is noise, and noise
-  trains people to skip the ones that matter.
-- **Every editorial image carries its own alt text** as a field beside the file. ⚠ **Never derive
-  alt text from the filename** — `DSC_0481` and `hero-final-v3-USE-THIS` are what filenames
-  actually look like, and a plausible-looking wrong alt is worse than none because a reviewer
-  scrolls past it.
-
-### What the CMS may edit, and what it must never see
-
-**Content the client changes goes in `.json`; the reasoning and the types stay in `.ts`
-beside it.** A CMS can structure-edit JSON and cannot edit TypeScript — so a data file that
-mixes the two either loses its types or loses its editability. Split them: `services.json`
-holds the rows, `services.ts` holds the type, the derivations and the comments explaining why
-a field exists.
-
-**`npm run check:redirects` validates the map, which nothing used to.** `redirects.mjs` proposes
-one; the mistakes are in the version a human then edited, because it is written by hand, in bulk,
-about URLs nobody can see any more. It refuses a duplicate source (Cloudflare takes the first match
-and the later rule — usually the deliberate fix — never fires), a self-redirect, a loop written
-across trailing-slash forms, and a status Cloudflare does not accept. A chain is a warning.
-
-**Keep redirects and structured data OUT of the CMS.** They look like content and they are not: a
-bad value in a redirect map or a JSON-LD block should fail the build, not publish. ⚠ **A redirect
-especially** — a client toggling one off is silent traffic loss with no visible symptom anywhere.
-
-**Navigation is the exception, and it took evidence to change.** This rule used to cover nav too,
-for the same reason: a typo'd path gives a menu item that renders perfectly and 404s only for a
-visitor. ⚠ **The result was that navigation was missing from all five audited sites**, so every
-client had to ask for a menu change — the second most common request after changing text. That is
-not a rule being respected; it is a gap the rule creates.
-
-The fix is not to forbid the field, it is to **verify it**. `npm run check:cms` resolves every
-internal path in CMS-managed data against the routes in `src/pages` — before the build, while
-somebody is still looking at the config — so a bad value still fails rather than publishing.
-
-Two things that make it safe rather than merely strict:
-
-- ⚠ **A dynamic route is a pattern, not a route.** `[slug].astro` serves every legal page, so
-  treating routes as literal strings reports most of a real site as broken. Verified against five
-  live sites carrying up to twelve dynamic patterns each: **zero false positives.**
-- **External links, `mailto:` and `tel:` are left alone.** `verify` checks those against the
-  deployed site, where they can actually be resolved; guessing here is the false-positive machine
-  that gets a check switched off.
-
-> ⚠ **A CMS rewrites the whole file from its schema, so any key the schema does not declare is
-> dropped on first save.** Not flagged, not merged, not warned about — the editor opens a
-> service, changes the price, hits save, and every field the config forgot is gone from the
-> repo. It looks like a normal content commit in the diff.
->
-> So: the schema must declare **every** key in the file, including ones the client will never
-> touch, and adding a field to the data means adding it to the schema in the same commit.
-> Review the first save from each collection as a diff before trusting it.
->
-> **`npm run check:cms` enforces this.** It was written after auditing five shipped sites, where
-> **all five failed** — 27 keys were at risk, including every analytics ID and the opening hours
-> on one site, and the homepage images of another in three languages.
-
-### A worked `.pages.yml`, because everyone was inventing one
-
-⚠ **The kit ships no CMS config, and for five shipped sites that meant five people writing one
-from a blank file. All five diverged and all five failed `check:cms`.** The config below is the
-shape to start from — not to copy wholesale, because the content model must follow the actual
-site.
-
-```yaml
-media:
-  - name: uploads
-    label: Photographs
-    input: media/source/uploads      # what `npm run media` READS
-    output: /img/uploads             # what it WRITES, once processed
-    extensions: [jpg, jpeg, png, heic, heif]
-
-content:
-  - name: settings
-    label: Site settings
-    type: file
-    path: src/data/site.json
-    fields:
-      # ⚠ EVERY key in the file, including ones the client will never open.
-      #    An undeclared key is deleted on the first save.
-      - { name: name, label: Business name, type: string, required: true }
-      - { name: tagline, label: Tagline, type: string }
-      - name: contact
-        label: Contact
-        type: object
-        fields:
-          - { name: email, label: Email, type: string }
-          - { name: phone, label: Phone, type: string }
-
-  - name: services
-    label: Services
-    type: collection
-    path: src/content/services
-    view: { fields: [title, featured] }
-    fields:
-      - { name: title, label: Name, type: string, required: true }
-      - { name: featured, label: Show on the home page, type: boolean }
-      - name: image
-        label: Photograph
-        type: image
-        # A picker returns /img/uploads/x.jpg; <Img> maps it back to the key.
-        options: { media: uploads }
-      - { name: imageAlt, label: Image description, type: string }
-      - { name: body, label: Body, type: rich-text }
-```
-
-**Declare a schema once and reuse it.** PagesCMS `components` exist for this, and the reason to
-bother is not tidiness: ⚠ **every copy of a repeated schema is another place to forget a key**, and
-a forgotten key is deleted on the client's first save. One definition cannot disagree with itself.
-
-```yaml
-components:
-  seo:
-    type: object
-    fields:
-      - { name: title, label: Meta title, type: string }
-      - { name: description, label: Meta description, type: text }
-      - { name: image, label: Social image, type: image, options: { media: uploads } }
-```
-
-⚠ **Two SEO fields are not like the others.** `noindex` and a canonical override can delist a site
-silently — the pages render, the build passes, and traffic goes to zero over weeks. Treat them as
-technical configuration unless the editor has explicitly asked and understands the consequence,
-and never put them beside ordinary copy where somebody can toggle one while editing a paragraph.
-
-**The CMS SEO values must feed the SEO the site already has.** One source of truth: never a CMS
-title, an Astro title and a JSON-LD title that can disagree. If adding a field means the same fact
-now lives in two places, the field is wrong.
-
-Four things that make it work rather than merely parse:
-
-- **Group by what the business recognises** — `Pages`, `Services`, `Team` — not by `src/content`
-  and `src/data`. The sidebar is the client's map of their own website.
-- **Declare every key**, then run `npm run check:cms`. That is the whole defence against the
-  silent delete.
-- **Media points at the pipeline's input**, with `extensions` set.
-- **Alt text sits beside the image**, as its own field.
-
-⚠ **Never put a derived value in the CMS.** If a `tel:` link, a `mailto:` or a maps URL is stored
-beside the phone number, email or address it is built from, **two fields hold one fact** — and that
-is exactly how a tap-to-call button ends up dialling last year's number. Somebody changes the
-number they can see and has no reason to suspect a second copy. Derive them in code; show the
-client only the values that genuinely differ.
-
-⚠ **Anything technical stays out**: analytics IDs, tokens, redirects, `robots.txt`, route
-configuration. If it is in the same file as editable content, split the file rather than exposing
-it.
-
-### Every image on a page is a field, or a stated exception
-
-⚠ **A sentence in the config excusing "photographs are chosen in code" covers the fields you
-already wrote and quietly excuses the ones you did not.** On a real build that left the header
-band, four class tiles, the gift-card picture and five more as `name="photos/x"` literals in
-`.astro`. The client opened the page, saw a photograph, and had no way to change it — while the
-config said images were deliberately developer-controlled.
-
-The rule: an image the page renders is **a field, or a deliberate exception you wrote down**.
-Never an oversight dressed as a principle. Two checks catch it:
-
-- every `name=` / `image=` / `poster=` in a page is an expression, never a string literal
-- every key in every CMS-backed file resolves to a declared field — `npm run check:cms`
-
-**Alt text defaults from the shared data, and a page overrides only when it has something
-different to say.** A required `alt` prop means every page passes one, which on one site meant the
-same sentence hardcoded twenty-one times: a correction was twenty-one edits, and any missed one
-was an inconsistency only a screen-reader user would ever meet.
-
-### Media, and the direction that breaks it
-
-⚠ **Point a CMS media source at the pipeline's INPUT, never its output.** `optimize-media.mjs`
-**reads** `media/source/` and **writes** `public/img/`. Two of the five audited sites uploaded
-into `public/img`, where a file is servable but has no responsive variants, no width/height and
-no manifest entry — so `<Img>` throws and the client's own edit turns the build red.
-
-```yaml
-media:
-  - name: uploads
-    label: New photographs
-    input: media/source/uploads     # what `npm run media` READS
-    output: /img/uploads            # what it will WRITE, once processed
-    extensions: [jpg, jpeg, png, heic, heif, tif, tiff]
-```
-
-**Declare `extensions` on every media source.** It is the only layer that refuses a bad format
-*in the UI*, instead of failing a build twenty minutes later.
-
-**An image field can be a real picker.** A picker returns a public path
-(`/img/photos/hero-1200.webp`), never a manifest key — so without help every image field has to be
-a free-text box asking a non-technical editor to type a key from memory, which is a quiz rather
-than a field. `<Img>` runs the path back through `toImageKey()`; the mapping is exact because the
-pipeline writes exactly one shape, `/img/` + key + `-<width>.<ext>`. Which variant the editor
-clicks does not matter, and a key ending in a digit survives.
-
-**If uploads must work without a developer**, the build has to run `npm run media` first — the
-manifest is generated, not committed by the CMS. Two things to get right:
-
-- ⚠ **The deploy must not fire on the CMS's own commit.** That commit contains a source image and
-  no manifest entry, so the build throws. Optimise first, deploy from the result.
-- ⚠ **`og-cards.mjs` needs ImageMagick, which a Cloudflare build image does not have.** Not fatal —
-  cards only regenerate when a card's photo changes and their output is committed — but a project
-  running media in CI has to know before it finds out.
-
-⚠ **A project forked before a pipeline change keeps the old pipeline, silently.** One shipped site
-was still emitting WebP only, months after the kit added AVIF — every image on it about **26%
-larger** than intended, with nothing anywhere reporting the drift. When the kit's media pipeline
-changes, existing projects do not get it; say so in the handover or check it at the next visit.
+No CMS is selected. Do not configure PagesCMS or add `.pages.yml`. Cloudflare EmDash is a future
+possibility only: it is not selected, installed or a current integration. If an owner later asks to
+reconsider content editing, record a separate decision before evaluating EmDash; do not silently add a
+CMS while scaffolding a site.
 
 ---
 
-## 5. Email
+## 5. Form notifications — pending owner decision
 
-**Two different jobs. Do not confuse them.**
+email provider, and do not post to Slack by default. The generic starter validates Turnstile and
+archives leads in KV; it sends no email or Slack notification. An archive is not an alert or
+delivery channel, so the live form must not launch until the owner selects and tests a notification path.
 
-### Transactional — form notifications, receipts, confirmations
+When a future owner-approved choice is made, document the provider/channel, sender or destination,
+fields shared, staging setup, access, retention/deletion, partial failure behavior, retry/alerting and
+who is accountable for checking delivery. Keep any credentials in the platform secret store. Use a
+separate staging destination and never send test personal data to production. A provider acknowledgment
+is not proof that a person read or acted on a lead.
 
-| Option | When | Notes |
-| --- | --- | --- |
-| **Brevo** ✅ default | Small business, generous free tier, marketing email in the same account later | Simple REST API, one `fetch`, good deliverability |
-| **Resend** | Developer-first, want React Email templates | Clean API and DX. Newer, smaller free tier |
-| **Postmark** | Deliverability is critical and you will pay for it | Best-in-class transactional reputation, separate streams |
-| **AWS SES** | High volume, already on AWS | Cheapest at scale. Needs warm-up and reputation management |
-| **Mailgun / SendGrid** | Existing account or specific integration | Fine; nothing they do the above do not |
-| **Cloudflare Email** | Inbound routing is free and excellent. Sending is newer — check maturity before depending on it | MailChannels' free Workers relay is gone; do not follow old tutorials |
-
-**Google Workspace is not a transactional provider.** It gives the business real mailboxes at
-their domain — get it for that. Sending app notifications through Workspace SMTP hits
-per-day limits and puts your form traffic on the same reputation as the owner's personal
-mail. Use a transactional API.
-
-**Non-negotiables whichever you pick:** a verified sender on the client's own domain, SPF +
-DKIM + DMARC configured, key in the platform secret store, and the recipient
-**environment-derived** so staging never emails the client.
-
-### Marketing — newsletters, campaigns
-
-Brevo (same account as transactional), Mailchimp (ubiquitous, expensive at scale), Klaviyo
-(e-commerce), ConvertKit or Buttondown (writers). Keep marketing consent separate from a
-contact form submission — a quote request is not a newsletter opt-in, and treating it as one
-is both bad practice and, in the EU, unlawful.
+Cloudflare Email Routing is for inbound mail, not outbound contact-form notification, and changing it
+can affect existing MX records. No DNS, MX or email-routing change is implied here; capture records
+read-only and require separate owner approval for any future change.
 
 ---
 
@@ -812,7 +535,8 @@ as a go-live line.
 
 **Reading them back** — storage is only half of it. The template ships a token-protected CSV at
 `/api/leads.csv`, which is the right minimum: one route, no UI, no dependency. It is enough when
-the client only ever receives the notification email and nobody needs to look at the archive.
+an authorized operator is responsible for retrieving the archive; no notification email or Slack
+message is sent by the starter.
 
 It stops being enough the moment somebody does, and the reason is specific:
 
@@ -840,14 +564,22 @@ surface to keep working. Cloudflare Access also has to be set up, which is a rea
 operation, not a build step. Offer it at discovery — [`kickoff.md`](kickoff.md) §2 — rather than
 retrofitting it in week three.
 
-**Spam, in order of preference:**
-1. **Honeypot** — always, free, catches most bots. Accept silently when it trips
-2. **Cloudflare Turnstile** ✅ — free, privacy-preserving, usually invisible, no puzzle
-3. **Rate limiting** at the edge on the endpoint
-4. hCaptcha / reCAPTCHA — only if something above proved insufficient
+**AW form protection baseline:** Cloudflare Turnstile, with server-side Siteverify on every
+accepted submission, plus a honeypot and endpoint rate limiting. A browser widget without
+Siteverify is not protection; Cloudflare documents server-side validation as mandatory. Tokens
+expire after five minutes and are single-use, so provide a recoverable error path for expired,
+replayed or invalid tokens and for verification-service outages. Turnstile adds a Cloudflare-hosted
+widget and data-processing dependency; document it and test widget accessibility rather than
+promising that Managed mode is always invisible. If Invisible mode is selected, Cloudflare requires
+the Turnstile Privacy Addendum to be referenced in the site's privacy policy. See [Cloudflare's
+validation guide](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
+and [widget modes and privacy requirements](https://developers.cloudflare.com/turnstile/concepts/widget/).
 
-A quote form on a small business site does not need a CAPTCHA on day one. Honeypot plus
-server validation handles the overwhelming majority; add Turnstile if real spam appears.
+The current generic template includes the widget and server-side Siteverify checks, archives leads
+in KV, and sends no email or Slack notifications. It also lacks request rate limiting, an overall
+body-size cap, duplicate protection and durable recovery. Configure the public site key and Worker
+secret, resolve the notification decision, then add/test the remaining controls in the site
+repository before production use.
 
 ---
 
@@ -973,20 +705,20 @@ recommendation, not a code one — say so anyway.
 
 ---
 
-## 10. The default stack, assembled
+## 10. Example stack for a local-services site
 
-For a local services business — the most common brief:
+For a local services business — the most common brief, **if the project fits and the owner has approved the integrations**:
 
 ```
 Source        WordPress + Elementor  → crawl rendered HTML, mine SEO plugin export
 Framework     Astro 7, output: static
 Host          Cloudflare Workers, single worker, build variable decides environment
 Media         Build-time sharp → WebP + manifest, served from worker assets
-CMS           None, or PagesCMS if the client publishes
+Content       Version-controlled files; no CMS selected (EmDash future possibility only)
 Forms         Astro API route, prerender = false
 Storage       Cloudflare KV, lead:<iso>:<uuid>, written before any third-party call
-Email         Brevo transactional, verified sender, recipient env-derived
-Spam          Honeypot + server validation; Turnstile if spam appears
+Notifications Email/Slack transport pending; no provider or channel selected
+Spam          Turnstile + server-side Siteverify, honeypot and rate limiting
 Analytics     GA4 + GTM if asked, else Cloudflare Web Analytics. Production only
 Search        Search Console + Bing Webmaster
 Local         GBP + Bing Places + Apple Business Connect, NAP from the site's data file
@@ -1006,7 +738,7 @@ proposed addition changes that materially, it should earn it.
 | **Cloudflare Workers** | 100k requests/day | ~3k visits/day at ~1 request each, since assets are served without invoking the worker | $5/mo for 10M |
 | **Workers KV** | 1k writes, 100k reads/day | Writes are one per enquiry. A marketing site does not approach this | $0.50/M reads |
 | **Workers Builds** | 3k build minutes/mo | A ~1-minute build, so effectively never | — |
-| **Brevo** | 300 emails/day | One per enquiry plus autoresponder | ~£15/mo |
+| **Notification provider** | Not selected | Set only after owner approval | Pending |
 | **Cloudflare Web Analytics** | Unlimited | — | Free, permanently |
 | **GA4 + GTM** | 10M events/mo | — | Free at this scale |
 | **Turnstile** | 1M challenges/mo | — | Free |
@@ -1035,8 +767,8 @@ Put the finished numbers in the handover, §2 — see `build.md` phase 9.
 Fold these into `kickoff.md` Round 2 once the business type is known:
 
 - Which CDN or media host, if the image library is large? *(default: worker assets, R2 past ~15 MB)*
-- Does anyone non-technical need to publish? *(decides CMS at all)*
-- Which email provider, and is there a verified sender on the domain already?
+- Who will prepare/review changes to the file-based content? *(no CMS is selected; EmDash is a future possibility only)*
+- Email/Slack notification transport is pending; which channel and destination will the owner approve before production?
 - Do they have Google Workspace for mailboxes? *(separate question from transactional)*
 - Which analytics do they actually read? *(not: which do they have)*
 - Is Google Business Profile claimed and verified? Bing? Apple?

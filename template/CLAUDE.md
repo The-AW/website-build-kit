@@ -42,8 +42,13 @@ and `npm run check:contact` compares them on every build. Never type a `tel:` or
 **`src/data/business.ts` is the only place business facts live.** Name, phone, address,
 hours, service areas, credentials — plus `locale`, `timeZone` and `schemaTypes`, whose
 defaults are deliberately neutral (`en`, `UTC`, `LocalBusiness`) rather than correct. Neutral
-is a prompt to set them; a plausible wrong value is not. The header, footer, every call-to-action, the notification
-emails and the JSON-LD all read from it. Never hard-code a phone number in a component.
+is a prompt to set them; a plausible wrong value is not. The header, footer, every call-to-action
+and the JSON-LD all read from it. Never hard-code a phone number in a component.
+
+**Content stays in version-controlled files.** No CMS is selected or installed; do not add
+PagesCMS or a `.pages.yml`. Cloudflare EmDash is a future possibility only, not a current
+integration. The site's authorized editing and review workflow belongs in its project-specific
+handover.
 
 **`src/styles/tokens.css` is the only place a raw colour, size, radius or duration is
 written.** Components reference tokens and nothing else. If you are typing a hex or a px in a
@@ -72,8 +77,8 @@ the build variable, so it alarms when the page disagrees with the environment (`
 `ANALYTICS LIVE`). `?nobadge=1` hides it for a session; never make that persistent.
 
 **`src/data/site.ts` is the only environment switch.** `PUBLIC_SITE_ENV` derives
-indexability, analytics, canonical host, which KV namespace leads land in, and who gets
-notified. Do not add a second flag — extend this one.
+indexability, analytics, canonical host, lead tag and which KV namespace leads land in. No
+notification recipient is configured. Do not add a second flag — extend this one.
 
 **Images are AVIF + WebP.** `optimize-media.mjs` emits both per width and `<Img />` renders a
 `<picture>`; AVIF is 26% smaller at better quality (measured — see `stacks.md` §3). WebP is the
@@ -84,9 +89,10 @@ that a `.parent > img` selector stops matching once there is a `<picture>` — s
 reference it by key (`photos/hero-home`) via `<Img />`. Never an external URL, never a raw
 path. This is what keeps `width`/`height` on every image so nothing shifts.
 
-**Forms write to storage before calling anyone.** In `src/pages/api/contact.ts` the KV write
-happens *before* the email provider. A provider outage should cost a notification, not a
-lead. Keep that ordering. The cross-origin refusal runs *before* validation, for the same
+**Forms are archived in KV only.** `src/pages/api/contact.ts` has no email or Slack adapter;
+success means a lead was stored, not that an operator was notified. Email/Slack transport is
+pending owner decision, so do not use this form in production until a channel and recovery path
+are selected and tested. The cross-origin refusal runs *before* validation, for the same
 reason: ordered after, it only ever fires on submissions that were being rejected anyway.
 
 **Stored leads expire.** `site.leadRetentionDays` becomes a KV `expirationTtl`, because KV
@@ -94,9 +100,10 @@ keeps a value forever otherwise and "indefinitely" is not a retention period any
 accepts. Keep the number and the privacy notice in step, and keep personal data out of KV
 metadata — `list()` returns metadata without reading values.
 
-**Everything works without JavaScript.** The page renders, the form submits, stores and
-notifies. Anything that hides an element must be the same thing that reveals it — CSS that JS
-is expected to undo shows a blank page whenever a bundle fails.
+**Content pages work without JavaScript; the form fails closed without Turnstile.** The form
+requires its client challenge and never accepts an unverified submission; the published phone
+and email details are the fallback. Anything that hides an element must be the same thing that
+reveals it — CSS that JS is expected to undo shows a blank page whenever a bundle fails.
 
 **Analytics IDs are the client's own, or empty.** `src/data/site.ts` emits no tag unless both
 are set, so an unset ID cannot fall back to another project's container. Never copy one in.
@@ -120,23 +127,14 @@ weakened scrim.** On a real site two of three regions could not fail at any phot
 exposure was a scrim lightened from 92% to 62% so a client's photography could show its colour.
 This check is what makes weakening one safe.
 
-**Navigation may be CMS-managed; redirects may not.** `check:cms` resolves every internal path in
-CMS-managed data against `src/pages`, so a menu item pointing at a missing page fails the build
-rather than 404ing for a visitor. A redirect has no such check — a client toggling one off is
-silent traffic loss — so it stays in code.
-
-⚠ **A CMS DELETES EVERY KEY ITS SCHEMA FORGOT.** It rewrites the whole file from the schema, so
-anything undeclared is absent from what it writes back — the client changes one field, saves, and
-the rest is gone, looking like an ordinary content commit. `npm run check:cms` refuses a
-`.pages.yml` that does not declare every key in the files it edits. **Declare keys the client will
-never touch**, or move them out of a CMS-managed file.
+**Content, navigation and schemas are file-based.** `check:cms` is a safety tool for an
+existing project-specific CMS configuration; this starter has no `.pages.yml` and the check is
+a no-op without one. Do not add a CMS by default. Redirects remain developer-controlled in code.
 
 ⚠ **UPLOADS GO TO `media/source/`, NEVER `public/img/`.** The direction is the whole bug:
-`optimize-media.mjs` **reads** `media/source/` and **writes** `public/img/`. A CMS media source
-pointed at the output produces files with no variants, no width/height and no manifest entry, so
-`<Img>` throws and the client's own edit turns the build red. `<Img>` accepts a picker path like
-`/img/photos/hero-1200.webp` and normalises it back to the key, so an image field can be a real
-picker instead of asking the client to type a manifest key from memory.
+`optimize-media.mjs` **reads** `media/source/` and **writes** `public/img/`. Putting new source
+images in the generated output produces files with no variants, no width/height and no manifest
+entry, so `<Img>` throws. Keep editable source assets and generated media output separate.
 
 ⚠ **THE HONEYPOT IS CALLED `company`.** `api/contact.ts` discards any submission that fills it in,
 silently and with a 200, so a bot learns nothing. Add a real "Company" field to that form — an

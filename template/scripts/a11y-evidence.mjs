@@ -326,7 +326,7 @@ ${reflowOut.replace(/\[[0-9;]*m/g, '').trim() || 'did not run'}
 | --- | --- | --- | --- |
 | Keyboard | Tab, Shift-Tab, Enter, Space, Escape — hands off the mouse | ⚠ | ⚠ |
 | Screen reader | VoiceOver + Safari, or NVDA + Firefox | ⚠ | ⚠ |
-| Forms | Submit empty, submit bad, submit with JavaScript off | ⚠ | ⚠ |
+| Forms | Submit empty/bad; with JavaScript off confirm Turnstile fails closed and phone/email fallback is visible | ⚠ | ⚠ |
 | Zoom | 200% and 400% | ⚠ | ⚠ |
 | Looked at it | On a real phone, at 100% | ⚠ | ⚠ |
 

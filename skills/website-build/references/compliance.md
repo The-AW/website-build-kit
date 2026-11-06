@@ -315,8 +315,9 @@ Most of it is not code. What is:
   so anything there is available through the cheaper call for no benefit
 - ⚠ **THE MESSAGE BOX IS WHERE REGULATED DATA ACTUALLY ARRIVES, AND NOT ASKING IS NOT A CONTROL.**
   You can design a form that requests nothing regulated and still receive *"my son is 7, diagnosed
-  with X, currently on Y"* in the free-text field. At that moment it is in KV, in the notification
-  email, and in the CSV export — for a client whose position assumes it is not.
+  with X, currently on Y"* in the free-text field. At that moment it is in KV and in the CSV
+  export; if an owner later enables an email/Slack notification channel, it is also copied there.
+  The AW starter has no notification transport selected.
 
   It is silent in the worst way: the form works, the lead arrives, nothing errors, and every gate
   in this kit passes. The exposure surfaces in an audit or a breach.

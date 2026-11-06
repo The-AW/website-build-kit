@@ -53,10 +53,10 @@ Source material  [ ] existing live site: <url>      # migration
 Scale            ~<N> pages. Repeating families: <e.g. 6 location pages, 8 services>
 
 Who edits it     <client, non-technical / developers only>
-How              <git-based CMS / markdown PRs / nobody after launch>
+How              <version-controlled files by default; EmDash is a future possibility only>
 
-Forms            <quote + contact> → <email> and <storage>
-Email provider   <Brevo / Resend / Postmark>        # transactional, not marketing blast
+Forms            <quote + contact> → <storage decision>; notification transport pending
+Email/Slack      <pending owner decision; no provider or channel selected>
 Analytics        <GA4 / GTM / Plausible / none>
 Business facts   name, phone (display + E.164), address, hours, socials, service areas,
                  credentials/accreditations, founding year
@@ -129,14 +129,17 @@ data file, consumed by both the UI and the structured data. Motion in one module
 sources of truth for the same fact is a bug that has not surfaced yet.
 
 **Progressive enhancement is not optional.** The page must render complete and readable with
-JavaScript disabled, and the form must still submit, store and notify. Elements may only be
-hidden *by the animation library itself*, never by CSS that JS is expected to undo — that
-pattern shows a blank page whenever the script fails. Honour `prefers-reduced-motion`.
+Content pages must render complete and readable with JavaScript disabled. The contact form requires
+Turnstile's client challenge and fails closed when it is unavailable; published phone/email details
+are the fallback. Elements may only be hidden *by the animation library itself*, never by CSS that
+JS is expected to undo — that pattern shows a blank page whenever the script fails. Honour
+`prefers-reduced-motion`.
 
 **Environment behaviour is derived, never toggled by hand.** Staging must be non-indexable,
-with analytics off, test-tagged submissions, and notifications routed to the developer
-rather than the client's inbox — all from a single build variable. Anything a human must
-remember to switch at go-live will eventually ship wrong. Detect production by an **exact
+with analytics off and test-tagged submissions. No notification recipient is configured; if an
+owner later selects a channel, staging must use a separate approved destination. Derive applicable
+behavior from a single build variable. Anything a human must remember to switch at go-live will
+eventually ship wrong. Detect production by an **exact
 hostname allowlist**, never a suffix match — `new.example.com` ends with `example.com`.
 
 **Make the wrong build impossible, not merely documented.** A CI job that runs a bare build
@@ -201,10 +204,11 @@ settled.
 ## Phase 4 · Build          [in progress]
 
 Gates passed   0 recon ✅  1 extract ✅  2 model ✅  3 tokens ✅
-Locked         Astro/CF · Brevo · KV · Editorial · Fraunces+Inter · restrained motion
+Locked         Astro/CF · Turnstile · file-based content · Editorial · Fraunces+Inter
 Archetype      local services (+ landing page for the spring campaign)
 Compliance     WCAG 2.2 AA · US private · no statutory deadline · GDPR (EU visitors)
-Open           ! DNS owner unknown — blocks go-live
+Open           ! Email/Slack notification transport pending — blocks go-live
+               ! DNS owner unknown — blocks go-live
                ? location page 6 has no distinct content — cut it?
 Next           /services/* (6 of 8 done)
 
@@ -375,15 +379,16 @@ section. Measure the mean pixel value rather than assuming.
 intrinsic dimensions.*
 
 ### 6 · Integrations
-Forms, email, storage, spam protection, analytics. Write submissions to durable storage
-**before** calling any third-party API, so a provider outage costs a notification rather
-than a lead. Validate server-side and return field-level errors. Add a honeypot; accept
-silently when it trips rather than revealing the check. Give the client a way to get the
-data out — a token-protected CSV export costs twenty lines and saves a support request a
-month.
+Forms, storage, anti-bot protection and analytics. Cloudflare Turnstile with server-side
+Siteverify is the selected anti-bot protection. The starter archives submissions in KV, but
+email/Slack notification transport is pending; no provider or destination is selected. Do not
+present the archive as an alert. If the owner later approves a notification channel, persist first,
+then test delivery, failure and recovery in an approved staging destination. Validate server-side
+and return field-level errors. Add a honeypot; accept silently when it trips rather than revealing
+the check. Give the authorized operator a protected way to retrieve an approved archive.
 
-*Gate: a real submission produces a stored record **and** a delivered email — verified in
-the provider's own dashboard or API, not merely a 200 response.*
+*Gate: storage behavior is verified and the notification decision is recorded. Production remains
+blocked until an owner-selected notification path and recovery behavior are implemented and tested.*
 
 ### 7 · SEO parity
 Titles, descriptions, canonicals, Open Graph, sitemap, robots. Structured data driven by the
@@ -499,20 +504,24 @@ the keyboard and screen-reader passes.
 
 ---
 
-## 4. Stack profile — Astro + Cloudflare
+## 4. Example stack profile — Astro + Cloudflare
 
-The proven configuration. Swap components deliberately, not by default.
+Use this only when recon confirms a content-first site with a small Worker runtime need, such as a
+first-party form endpoint. A static-only site can deploy Workers Static Assets without a Worker
+script or Astro adapter; add the runtime and adapter only for server routes, on-demand rendering or
+Cloudflare bindings.
 
 | Concern | Choice | Why |
 | --- | --- | --- |
-| Framework | Astro, `output: 'static'` | Marketing pages change weekly, not per-request. Zero JS by default |
-| Runtime | Cloudflare Workers adapter, per-route `prerender = false` | One origin-free deploy; a runtime only where a route needs one |
+| Framework | Astro, static-first | Marketing pages can build ahead of requests; add runtime behavior only where required |
+| Runtime | None for static-only output; Worker plus supported Astro adapter for server routes/bindings | A form API route is runtime behavior; not every page needs to run in a Worker |
 | Media | Build step → static assets, or R2 behind a CDN subdomain at scale | Under ~10 MB, shipping with the worker beats a bucket |
-| Storage | KV, keyed `lead:<iso-timestamp>:<uuid>` | Sorts chronologically; durable backup of every submission |
+| Lead archive | Optional Workers KV with an enforced TTL, only if the owner needs an archive | Avoid retaining submissions by default; document retention and deletion for every copy |
 | Content | Collections + schema validation | Bad frontmatter fails the build |
-| CMS | Git-based (PagesCMS or similar) | Non-technical editing without a database |
+| CMS | None; content stays in version-controlled files | EmDash is a future possibility only, not a current integration |
 | Motion | CSS + IntersectionObserver; GSAP only for pinning or scrubbed timelines | 70 KB is a lot to spend on a fade |
-| Email | Transactional API, key in the secret store | Never SMTP credentials in the repo |
+| Form notifications | Email/Slack transport pending; no provider or channel selected | Require an explicit owner decision; document destinations, retention and recovery before production |
+| Form protection | Turnstile with server-side Siteverify, plus honeypot and rate limiting | The generic template integrates the widget and Siteverify but not request rate limiting |
 
 **Single worker, not two.** One worker serves staging and production; the build variable
 decides behaviour. A second environment means a second worker name and a second thing to
@@ -679,13 +688,13 @@ Not "the build passed." Every row verified against the **deployed** site.
 | Routes | Every inventoried URL returns 200 |
 | Redirects | Each legacy URL 301s to its *specific* equivalent and lands 200 |
 | 404 | Unknown paths return a real 404 status, not 200 |
-| Staging guards | `noindex`, disallow-all robots, **zero** analytics references, zero production URLs, notifications routed away from the client |
+| Staging guards | `noindex`, disallow-all robots, **zero** analytics references, zero production URLs, no notification recipient configured; if later selected, use a separate test destination |
 | Canonicals | Point at the host actually being served |
 | Coverage | Every URL in `recon/urls.txt` resolves on the new site — `npm run verify` fails otherwise. A build with three pages where the old site had eighteen passes every *other* check in this kit, because all three of them return 200 |
 | Preserved paths | Old sitemap filename, verification files, `ads.txt`, `/feed/`, `/.well-known/*` all resolve 200 or 301-to-200 — `npm run verify` re-checks exactly what `recon` found on the old site; Search Console and Bing re-checked after go-live |
 | Integrations | Every roadmap line verified in the provider's own dashboard, or explicitly dropped with a date. No blank lines |
-| Forms | Valid → 200 + stored record + delivered email; empty → 422 with field errors; honeypot → silent accept; cross-origin → 403 |
-| Forms, no JS | Native POST still stores, still notifies, lands on a human-readable page |
+| Forms | Valid → 200 + stored record only; no email/Slack notification is configured. Owner decision and delivery/recovery tests block production. Empty → 422; honeypot → silent accept; cross-origin → 403 |
+| Forms, no JS | Turnstile challenge unavailable → fail closed, no record stored; phone/email fallback remains visible |
 | Media | Every image resolves and carries intrinsic dimensions; `og:image` is a format scrapers render; no duplicate covers |
 | Structured data | Validates, and reflects the same facts as the visible page |
 | No-JS | Page renders complete with JavaScript disabled |

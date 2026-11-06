@@ -33,10 +33,10 @@ Kept so they are not re-proposed as new ideas.
 | --- | --- |
 | **Visual regression / screenshot diffing** | Notoriously noisy on marketing sites — a rotating testimonial or a lazy-loaded image fails the diff. High upkeep, low signal |
 | **Uptime monitoring** | A third-party service, not a script. The runbook already says to point one at a real page *and* the form endpoint |
-| **Lead-delivery alerting** | Ops, not a build kit. KV-before-provider already means an outage costs a notification and never a lead |
+| **Lead-delivery alerting** | Email/Slack transport is not selected. The starter archives leads in KV and sends no notifications; owner must select/test an operational path before production |
 | **CrUX field-data fetch** | `cfBeaconToken` gives real-user Core Web Vitals from the first visitor, months before CrUX covers a new domain. Already solved |
 | **Anything SEO-analytical** | Separate skills exist. This kit builds the site; it does not audit rankings |
-| **A CMS in the template** | `stacks.md` §4 picks one per project. Shipping one decides it for every site |
+| **A CMS in the template** | AW content stays in version-controlled files; no CMS is selected. EmDash is a future possibility only. Shipping a CMS would make an unapproved decision for every site |
 | **A component library** | The reason the template has no design. See `CLAUDE.md` |
 | **Style-preset skills** (`taste-skill` and similar) | They ship named looks — minimal, brutalist, soft. `design.md` explains why something reads as expensive and **never prescribes a look**; adopting presets would put two philosophies in one build. Not a criticism of those projects, which solve a different problem |
 | **A component framework as a named option** (`lumos-for-astro` and similar) | Genuinely good work, MIT, copied in rather than depended on, and its accessibility posture is the same one `global.css` argues for. Two reasons it is not listed in `stacks.md`: nothing here has shipped a build with it, which is the provider rule; and **35 shared components are a shared look** whether they intend to be or not — the sameness the template's whole no-design argument exists to prevent. ⚠ `stacks.md` is loaded *to make a decision*, so a row marked "named, not recommended" reads as a recommendation the moment anything is choosing a stack in a hurry. Revisit with build evidence, and price the sameness honestly when doing it. What it was worth reading for is in **Done**: cascade layers |

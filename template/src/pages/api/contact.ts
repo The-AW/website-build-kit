@@ -1,12 +1,13 @@
 import type { APIRoute } from 'astro';
 import { validateLead, leadKey, type LeadRecord } from '../../lib/lead';
-import { notifyTeam } from '../../lib/brevo';
 import { site } from '../../data/site';
 import { kv, secret } from '../../lib/runtime';
+import { verifyTurnstile } from '../../lib/turnstile';
+import { isSameOrigin } from '../../lib/origin';
 import { business } from '../../data/business';
 
 /**
- * Where the no-JavaScript path lands. One place, because these are routes and
+ * Where the native browser form POST lands. One place, because these are routes and
  * a route that only exists in a redirect string is a route nobody notices has
  * gone — the first version of this file pointed at /contact-us/ and /thank-you/
  * from a different project, and both were 404s in a fresh build.
@@ -25,9 +26,10 @@ const json = (body: unknown, status: number) =>
   });
 
 /**
- * A native form POST — no JavaScript — must not land on a page of raw JSON.
- * The enhanced path sends `accept: application/json`; anything else is a
- * browser submitting the form directly and gets a redirect it can follow.
+ * A native browser form POST must not land on a page of raw JSON. The enhanced
+ * path sends `accept: application/json`; anything else is a browser submitting
+ * the form directly and gets a redirect it can follow. Turnstile still has to
+ * provide a valid token for either path.
  */
 const wantsHtml = (request: Request) => {
   const accept = request.headers.get('accept') ?? '';
@@ -47,7 +49,7 @@ const seeOther = (location: string) =>
  * ⚠ WHAT IT DOES NOT STOP, so nobody reads more into it than it does: a script
  * posting directly can simply omit the header, and `Origin` is absent on a
  * same-origin form post from some privacy tooling — so absent has to be
- * allowed, or the no-JavaScript path breaks for real people. Spam is the
+ * allowed, or the native form path breaks for real people. Spam is the
  * honeypot's job, not this.
  *
  * This check must run BEFORE validation. Ordering it after means a
@@ -55,18 +57,8 @@ const seeOther = (location: string) =>
  * refusal only ever fires for submissions that were going to be rejected
  * anyway — which looks identical in a status-code test.
  */
-const sameOrigin = (request: Request) => {
-  const origin = request.headers.get('origin');
-  if (!origin) return true;
-  try {
-    return new URL(origin).host === new URL(request.url).host;
-  } catch {
-    return false;
-  }
-};
-
 export const POST: APIRoute = async ({ request, clientAddress }) => {
-  if (!sameOrigin(request)) {
+  if (!isSameOrigin(request.url, request.headers.get('origin'))) {
     return json({ ok: false, error: 'Cross-origin submissions are not accepted.' }, 403);
   }
 
@@ -105,7 +97,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
    * try again without the field.
    *
    * ⚠ IT MUST NOT LAND ON `SUCCESS`. That URL is the conversion: the form page
-   * fires `generate_lead` on `?sent=1` for the no-JavaScript path. Sending
+   * fires `generate_lead` on `?sent=1` for an accepted native form POST. Sending
    * caught spam there lets any bot that runs JavaScript inflate the only
    * conversion the website owns — silently, in a shape that looks like the site
    * performing unusually well, which nobody investigates.
@@ -122,9 +114,9 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
    *
    * ⚠ REFUSE, NEVER COERCE. `String(value)` turns `{"name": {"a": 1}}` into the
    *   string `"[object Object]"`, which is 15 characters long and therefore
-   *   PASSES the name rule — so the lead is stored in KV and emailed to the
-   *   client with a nonsense name. That trades a loud 500 for a silent bad
-   *   record, which is the worse half of the trade everywhere else in this kit.
+   *   PASSES the name rule — so the lead is stored in KV with a nonsense name.
+   *   That trades a loud 500 for a silent bad record, which is the worse half
+   *   of the trade everywhere else in this kit.
    *
    * ⚠ AND IT RUNS AFTER THE HONEYPOT, deliberately. A submission the honeypot
    *   CATCHES has already left by the quiet door — 303 to the form page, or a
@@ -157,10 +149,24 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   if (!ok) {
     if (wantsHtml(request)) {
       // Carry the failing field names back in the query string so the form can
-      // highlight them without JavaScript having to re-post anything.
+      // highlight them without another browser-side POST.
       return seeOther(`${FORM_PAGE}?invalid=${encodeURIComponent(Object.keys(errors).join(','))}${FORM_ANCHOR}`);
     }
     return json({ ok: false, errors }, 422);
+  }
+
+  const turnstile = await verifyTurnstile(
+    fields['cf-turnstile-response'],
+    secret('TURNSTILE_SECRET_KEY'),
+    new URL(request.url).hostname,
+  );
+  if (!turnstile.ok) {
+    const unavailable = turnstile.reason === 'unavailable';
+    const error = unavailable
+      ? 'Verification is temporarily unavailable. Please try again or contact us by phone.'
+      : 'Please complete the security check again before sending.';
+    if (wantsHtml(request)) return seeOther(`${FORM_PAGE}?failed=1${FORM_ANCHOR}`);
+    return json({ ok: false, error, resetTurnstile: true }, unavailable ? 503 : 403);
   }
 
   const receivedAt = new Date().toISOString();
@@ -176,52 +182,14 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     ip: clientAddress ?? '',
   };
 
-  // ── Durable first, third party second ──────────────────────────────────
-  // The KV write happens BEFORE the Brevo call, so a provider outage costs a
-  // notification rather than a lead. If KV itself fails we still try to send,
-  // because an email in an inbox beats losing the enquiry entirely.
+  // ── Archive only; notification transport is pending owner decision ──────
+  // The starter deliberately has no email or Slack adapter. A success here
+  // means the lead was stored; it does not mean anyone was notified. The AW
+  // launch checklist blocks production until an owner-selected channel and its
+  // recovery path have been implemented and tested.
   const store = kv(site.leadsBinding);
-
-  let stored = false;
-  if (store) {
-    try {
-      /*
-       * `expirationTtl` is the retention policy, enforced by the store. See
-       * site.leadRetentionDays — without it KV keeps a lead forever, which is
-       * not a defensible answer to "how long do you hold this data".
-       *
-       * Metadata carries NO personal data. It used to duplicate name and email
-       * here, which put them in `list()` — an operation that returns metadata
-       * without reading values, so the PII was available through the cheaper
-       * call. Nothing consumed it: the CSV export does a `get()` per key and
-       * reads the full record. Duplicated personal data with no reader is all
-       * cost and no benefit.
-       */
-      await store.put(leadKey(receivedAt, id), JSON.stringify(lead), {
-        expirationTtl: site.leadRetentionDays * 24 * 60 * 60,
-        metadata: { env: lead.env },
-      });
-      stored = true;
-    } catch (error) {
-      console.error('lead kv write failed', { id, error: String(error) });
-    }
-  } else {
+  if (!store) {
     console.error('lead kv binding missing', { binding: site.leadsBinding });
-  }
-
-  let emailed = false;
-  const apiKey = secret('BREVO_API_KEY');
-  if (apiKey) {
-    const result = await notifyTeam(apiKey, lead);
-    emailed = result.ok;
-    if (!result.ok) console.error('lead email failed', { id, error: result.error });
-  } else {
-    console.error('BREVO_API_KEY not set');
-  }
-
-  // Only a total loss is reported as failure to the visitor. If either channel
-  // captured it, the enquiry reached us and the visitor should not retry.
-  if (!stored && !emailed) {
     if (wantsHtml(request)) return seeOther(`${FORM_PAGE}?failed=1${FORM_ANCHOR}`);
     return json(
       {
@@ -235,8 +203,33 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     );
   }
 
+  try {
+    /*
+     * `expirationTtl` is the retention policy, enforced by the store. See
+     * site.leadRetentionDays — without it KV keeps a lead forever, which is
+     * not a defensible answer to "how long do you hold this data".
+     *
+     * Metadata carries no personal data. The CSV export reads the record value
+     * by key; there is no need to duplicate PII in list metadata.
+     */
+    await store.put(leadKey(receivedAt, id), JSON.stringify(lead), {
+      expirationTtl: site.leadRetentionDays * 24 * 60 * 60,
+      metadata: { env: lead.env },
+    });
+  } catch (error) {
+    console.error('lead kv write failed', { id, error: String(error) });
+    if (wantsHtml(request)) return seeOther(`${FORM_PAGE}?failed=1${FORM_ANCHOR}`);
+    return json(
+      {
+        ok: false,
+        error: `We could not record your request. Please call us at ${business.phone.display}.`,
+      },
+      502,
+    );
+  }
+
   if (wantsHtml(request)) return seeOther(SUCCESS);
-  return json({ ok: true, id, stored, emailed }, 200);
+  return json({ ok: true, id, stored: true, notification: 'pending' }, 200);
 };
 
 /** A GET here is almost always a person pasting the URL. Send them to the form. */

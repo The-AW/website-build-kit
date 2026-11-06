@@ -28,8 +28,8 @@ export type LeadRecord = {
 
 /**
  * The form's service dropdown. Keep in step with `src/data/services.ts` — these
- * strings land in the lead record and the notification email, so a value that
- * does not match a real service makes the enquiry harder to route, not easier.
+ * strings land in the lead record, so a value that does not match a real service
+ * makes the enquiry harder to review, not easier.
  * Always keep a final catch-all option.
  */
 export const SERVICE_OPTIONS = [

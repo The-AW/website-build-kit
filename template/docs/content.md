@@ -18,9 +18,9 @@ that is deliberate, and it means a broken page can never reach visitors.
 | Images | `media/source/…`, then `npm run media` |
 | Colours, fonts, spacing | `src/styles/tokens.css` |
 
-**`business.ts` is the single source.** The header, footer, every call to action, the
-notification emails and the structured data all read from it. Change the phone number there and
-it changes everywhere — including what Google reads. Never type a phone number into a page.
+**`business.ts` is the single source.** The header, footer, every call to action and the
+structured data all read from it. Change the phone number there and it changes everywhere —
+including what Google reads. Never type a phone number into a page.
 
 **Legal pages write themselves into the footer.** A file at
 `src/content/legal/privacy.md` is served at `/privacy/` and linked in the footer automatically —

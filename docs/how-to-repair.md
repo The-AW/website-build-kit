@@ -47,7 +47,7 @@ plain script that reads and never writes.
 ## Setup, once, about five minutes
 
 ```bash
-git clone git@github.com:nurkamol/website-build-kit.git ~/coding/website-build-kit
+git clone https://github.com/The-AW/website-build-kit.git ~/coding/website-build-kit
 cd ~/coding/website-build-kit && ./install.sh
 cd template && npm install
 ```

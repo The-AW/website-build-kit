@@ -28,14 +28,14 @@ Not a theme. The value is the accumulated set of decisions and the list of thing
 **silently** — clean build, clean types, clean deploy, wrong result.
 
 ```bash
-/plugin marketplace add nurkamol/website-build-kit
+/plugin marketplace add The-AW/website-build-kit
 /plugin install website-build@website-build-kit
 ```
 
 Or clone and symlink, if you would rather not add a marketplace:
 
 ```bash
-git clone https://github.com/nurkamol/website-build-kit.git
+git clone https://github.com/The-AW/website-build-kit.git
 cd website-build-kit && ./install.sh
 ```
 
@@ -54,6 +54,12 @@ works too if you want to be explicit.
 
 **→ [docs/how-to-start.md](docs/how-to-start.md)** — the three entry points, what to have
 ready before you begin, and what the first ten minutes should look like.
+
+**→ [docs/aw-migration-process.md](docs/aw-migration-process.md)** — AW's site-specific migration
+baseline, including content, form/email architecture and deployment boundaries.
+
+**→ [docs/aw-migration-checklist.md](docs/aw-migration-checklist.md)** — the phase-gated checklist
+to copy into each site's own repository.
 
 ## What's in it
 
@@ -88,15 +94,26 @@ The skill loads these as needed rather than all at once.
 
 `traps.md` is the one that earns its keep. Everything in it cost real debugging time.
 
-## Defaults
+## AW starting point
 
 ```
-Astro static → Cloudflare Workers → worker assets (R2 past ~15 MB)
-→ PagesCMS → Brevo → KV → GA4 or Cloudflare Web Analytics → Turnstile
+Astro when the site fits → Workers Static Assets for a static-only build (no adapter or Worker script)
+→ add a Worker runtime and Astro adapter only for server routes, on-demand rendering or bindings
+→ file-based content in the site's own repository; no CMS is selected (EmDash is a future possibility only)
+→ first-party form endpoint with Turnstile + server-side Siteverify
+→ email/Slack notification transport pending; no provider or channel selected
 ```
 
-Chosen because they are light, cheap at this scale, and compose without glue. Every one has
-alternatives in `stacks.md` with the specific condition that would justify switching.
+This is conditional, not a one-size-fits-all mandate. A static-only Astro site can deploy `dist/`
+as Workers Static Assets without an Astro adapter, Worker script or runtime bindings. A first-party
+form endpoint or other server route needs a runtime; use the supported adapter for Astro routes and
+bindings. Recheck the official [Astro Cloudflare integration](https://docs.astro.build/en/guides/integrations-guide/cloudflare/)
+and [Cloudflare Workers Astro guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/astro/)
+for each project. The generic template uses file-based content, has no CMS configuration, and
+validates Turnstile server-side. It archives leads in KV but sends no email or Slack notification;
+the notification transport is pending and must be selected and tested before production use. The
+template also lacks request rate limiting, a total body-size cap, duplicate protection and durable
+notification recovery. See the [AW migration process](docs/aw-migration-process.md).
 
 ## The template
 
@@ -114,11 +131,15 @@ does ship is the skeleton of the parts that take longest to get right:
   section rhythm, the three-card grid, face pairing, headline size, motion duration, focus
   ring, raw hex in components. No browser, so it runs in CI. `build:production` refuses while
   anything is left undecided
-- **Form endpoint** — server-side validation with field errors, honeypot, KV written
-  **before** the email provider is called, and a no-JavaScript path that still works
+- **Form endpoint** — first-party server-side validation, Turnstile/Siteverify, a honeypot and KV
+  lead archive. The starter sends no email or Slack notifications; select and test a transport
+  before production. It also has no total request-body cap, request rate limiter, duplicate
+  protection or durable notification recovery. `npm run test:turnstile` covers token,
+  hostname, action, failure and timeout handling; `npm run test:origin` covers exact-origin checks.
+  `npm run test:form` runs both suites manually, and both also gate every build
 - **Token-protected CSV export** of leads
 - **Environment derivation** — one build variable decides noindex, analytics, canonical host,
-  which store leads land in, and who gets notified
+  and which store leads land in; no notification recipient is configured
 - **Build guard** that refuses *any* build without an environment, because a bare build
   publishes `localhost` canonical tags cleanly and with no error. It keys on the command, not
   on `CI` — `npm run build` is the most reflexive command in npm, and that is exactly where the
@@ -282,13 +303,14 @@ does ship is the skeleton of the parts that take longest to get right:
   rather than a developer, rendered to PDF by `npm run handover`
 
 ```bash
-npm create website-build-kit@latest my-site
+npx degit The-AW/website-build-kit/template my-site
+cd my-site && npm install
 ```
 
-It checks your Node version before writing anything, restores the `.gitignore` npm strips from
-published packages, names the project after the directory, and installs. `npx degit
-nurkamol/website-build-kit/template my-site` still works if you would rather not run a
-scaffolder.
+For AW projects, scaffold from this fork so the site receives the current AW process and template.
+The inherited `create-website-build-kit` npm package is published separately by upstream and
+does not automatically include changes from this fork; use it for AW work only after AW publishes
+a matching version.
 
 Node 22.12+. It builds green with no content, no images and no secrets. Fill in
 `src/data/business.ts` first — everything else reads from it. Then `npm run tells` will tell

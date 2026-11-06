@@ -116,7 +116,7 @@ grep -rnoE "'[A-Za-z]+/[A-Za-z_]+'" src/lib src/data              # a hardcoded 
 name-based grep had been passing for months.** `HVACBusiness` was hardcoded in the
 organisation schema for two projects, so every site built from the template declared itself a
 heating company to Google. The lead-notification email carried a green palette and
-`America/Los_Angeles` — so every enquiry was stamped in a previous client's timezone, which is
+`America/Los_Angeles` in an earlier implementation — so every enquiry was stamped in a previous client's timezone, which is
 a plausible wrong time nobody re-reads.
 
 **Then check for a client's data as a *directory*, not a string.** Every grep above reads
@@ -264,7 +264,7 @@ cd create && npm publish        # prepack copies template/, postpack removes it
 
 **npm strips `.gitignore` from published packages.** It ships as `gitignore` and the CLI renames
 it back. That is not cosmetic: the template's `.gitignore` is what keeps `.dev.vars` — holding
-`BREVO_API_KEY` and the leads export token — out of the repository. `prepack` refuses to pack if
+`TURNSTILE_SECRET_KEY` and the leads export token — out of the repository. `prepack` refuses to pack if
 `.dev.vars`, `node_modules` or `dist` reach the staging copy, and the CLI exits rather than leave
 a scaffolded site without a `.gitignore`.
 
@@ -420,3 +420,31 @@ Written for someone tired and mid-problem.
 Extracted from getmiohome.com and expressducttest.com, both WordPress rebuilds onto Astro +
 Cloudflare Workers. When adding something, name the build it came from — it is what
 separates this from a listicle.
+
+## AW migration baseline
+
+The existing fork `The-AW/website-build-kit` is the process and starter source for AW work; do
+not create a duplicate kit repository. Keep every client/site in a separate repository with its
+own `README.md`, persistent `CLAUDE.md`, content, assets, configuration and secrets. Never put
+client-specific URLs, content, screenshots, analytics IDs, credentials or form submissions in
+this public kit.
+
+For AW sites, content stays in version-controlled files; no CMS is selected and no PagesCMS
+configuration should be added. Cloudflare EmDash is a future possibility only, not a current
+integration. Astro with Cloudflare Workers is a conditional starting point for content-first sites
+that fit. A static-only build can deploy `dist/` as Workers Static Assets without an Astro adapter,
+Worker script or runtime bindings; server routes, on-demand rendering and bindings require a Worker
+runtime and the supported Astro adapter. Recheck the official Astro/Cloudflare guide for each
+project.
+
+Do not use LeadConnector for contact forms. Cloudflare Turnstile with server-side Siteverify is
+the selected anti-bot protection. Email and Slack notification transport remains pending: no
+provider or channel is selected, and the generic template archives leads in KV but sends no
+notifications. Do not add Brevo as a default or enable a live form until the owner selects and
+tests a notification path. The template also lacks request rate limiting, a total body-size cap,
+duplicate protection and durable notification recovery; close those gaps before production use.
+No DNS/MX change is automatic; capture records read-only and get separate approval before changing
+production mail flow or deploying.
+
+Use [`docs/aw-migration-process.md`](docs/aw-migration-process.md) for the reusable method and
+[`docs/aw-migration-checklist.md`](docs/aw-migration-checklist.md) for each site's copy.

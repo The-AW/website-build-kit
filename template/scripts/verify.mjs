@@ -17,11 +17,11 @@
  * someone is tired, and a checklist run by hand at 11pm is not a check.
  *
  * ── NOTHING HERE CREATES DATA ──────────────────────────────────────────────
- * The form checks are deliberately limited to the three submissions the API
- * REFUSES: a honeypot hit (accepted, never stored), an empty body (422) and a
- * cross-origin post (403). A valid submission would write a real lead and send
- * a real notification, so this script never sends one. Test that by hand, once,
- * and watch it arrive.
+ * The form checks are deliberately limited to submissions the API refuses or
+ * silently accepts: a honeypot hit (never stored), an empty body (422) and a
+ * cross-origin post (403). A valid submission would write a real lead, so this
+ * script never sends one. The starter has no email/Slack notification transport;
+ * use staging data to test storage and any later owner-approved channel separately.
  *
  * ── WHAT IT CANNOT SEE ─────────────────────────────────────────────────────
  * Printed at the end, deliberately. A check that stays silent about its blind
@@ -1107,7 +1107,7 @@ record('empty submission is rejected', empty.status === 422, `got ${empty.status
  *
  *   The tempting fix is `String(value)`, and it is worse: `{"name":{"a":1}}`
  *   becomes `"[object Object]"`, which is 15 characters and therefore PASSES the
- *   name rule — so the lead is stored and emailed with a nonsense name. **A
+ *   name rule — so the lead would be stored with a nonsense name. **A
  *   silent bad record beats a loud error on exactly nobody.** So anything in the
  *   2xx range fails this too, not only the 5xx.
  */
@@ -1177,7 +1177,7 @@ const warned = results.filter((r) => !r.ok && r.warn);
 console.log(`\n${BOLD}── What this cannot see ${'─'.repeat(36)}${RESET}`);
 for (const line of [
   'One pageview per visit — a double-count is only visible in Realtime',
-  'That a valid submission stores AND emails — send one by hand, once (`npm run check:secrets` covers whether the key is even set)',
+  'That a valid submission stores in KV — verify with staging data; email/Slack notification transport is pending and not configured',
   'Whether the analytics container is the client\'s own — fetch it and read it',
   'Whether a redirect target is the RIGHT page, only that it resolves',
   'How fast it FEELS — weight and blocking counts are the inputs, never a timing. ' +

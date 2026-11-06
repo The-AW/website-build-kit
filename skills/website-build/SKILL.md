@@ -35,7 +35,7 @@ If the stack is the default, fetch the template now rather than at build time �
 does the mechanical half and writes the inventory every later step reads:
 
 ```bash
-npx degit nurkamol/website-build-kit/template .
+npx degit The-AW/website-build-kit/template .
 npm install && npm run recon -- https://site.com     # → recon/urls.txt, preserved, integrations
 npx pa11y-ci --sitemap https://site.com/sitemap.xml --standard WCAG2AA
 ```
@@ -44,7 +44,7 @@ npx pa11y-ci --sitemap https://site.com/sitemap.xml --standard WCAG2AA
 returns the page — mandatory for JS-rendered sources (Wix, Framer), and the only way to see
 whether a page *looks* right. `stacks.md` §1c.
 
-1. **URLs and template families** — *"15 URLs, 5 families, a form posting to Brevo"* beats
+1. **URLs and template families** — *"15 URLs, 5 families, a form posting to an existing third-party endpoint"* beats
    twenty questions. Identify the builder first (`stacks.md` §1); **for any page builder the
    answer is rendered HTML, never the database.** Pull the SEO plugin export too — titles,
    redirect table with hit counts, business facts.
@@ -61,10 +61,10 @@ open-ended "what look do you want?".
 
 - **Round 1** — business, and *the one action that counts as a win*. Name one. It settles
   every later layout argument.
-- **Round 2** — scope, content, integrations, and the provider decisions (each has a default,
-  so ask only where the default may not hold). **Two rows have no default and are always asked:
-  who edits the site after launch, and who holds DNS.** Neither is inferable from a crawl, and
-  skipping the first ships markdown-in-git to a client who cannot use it.
+- **Round 2** — scope, content, integrations and provider decisions. Use approved defaults where
+  they exist; record pending owner decisions explicitly. Always ask who will maintain the
+  file-based content and who holds DNS; email/Slack notification transport is pending and must
+  be selected before production.
 - **Round 3** — design direction and mobile. This is the round that decides whether the
   result looks premium. Offer named directions and specific font pairings.
 
@@ -85,7 +85,7 @@ If the stack is the default one, start from the template. **It does not ship wit
 — fetch it into the project directory:
 
 ```bash
-npx degit nurkamol/website-build-kit/template .     # empty dir; use my-site to make one
+npx degit The-AW/website-build-kit/template .       # empty dir; use my-site to make one
 ```
 
 Then follow `docs/runbook.md` §1 inside it — Node 22.12+, KV namespaces, secrets, and the
@@ -106,11 +106,16 @@ deleted.
 
 ## Defaults
 
-Astro static → Cloudflare Workers → assets on the worker (R2 past ~15 MB) → PagesCMS →
-Brevo → KV → GA4 or Cloudflare Web Analytics → Turnstile.
-
-Deviate on evidence. `references/stacks.md` gives every alternative and the specific
-condition that justifies it.
+Astro, static-first, for content-first sites that fit → Workers Static Assets for a static-only
+build (no adapter, Worker script or runtime bindings) → add a Worker runtime and the supported
+Astro adapter only for server routes, on-demand rendering or bindings → file-based content in the
+site's own repository; no CMS is selected (EmDash is a future possibility only) → first-party form
+endpoint with Cloudflare Turnstile validated by server-side Siteverify → email/Slack notification
+transport pending; no provider or channel selected. Do not use LeadConnector. Astro/Workers is
+conditional, not a blanket mandate. The generic starter integrates Turnstile and archives leads
+in KV, but sends no email or Slack notifications; it also lacks request rate limiting, a body-size
+cap, duplicate protection and durable notification recovery. Resolve the notification decision and
+close the launch gaps before production use. See `references/stacks.md` and the AW process docs below.
 
 ## Non-negotiables
 
@@ -127,14 +132,15 @@ These are not style preferences. Each prevents a specific, expensive failure.
   showing anyone a page — `design.md` §3, checked mechanically.
 - **One place per concern.** Business facts in one file, read by both the UI and the
   structured data, so the page and the schema cannot disagree.
-- **Environment derived from one build variable** — noindex, analytics, canonical host, which
-  store leads land in, who gets notified. Nothing toggled by hand at go-live. Detect
-  production by an exact hostname allowlist; `new.example.com` ends with `example.com`.
+- **Environment derived from one build variable** — noindex, analytics, canonical host and which
+  store leads land in. No notification recipient is configured. Nothing toggled by hand at go-live.
+  Detect production by an exact hostname allowlist; `new.example.com` ends with `example.com`.
 - **Make the wrong build impossible.** A bare CI build with no environment set publishes
   `localhost` canonicals, cleanly and with no error. Throw at config time.
-- **Durable storage before any third-party call** on form submissions. A provider outage
-  should cost a notification, not a lead.
-- **Progressive enhancement.** The page renders and the form submits with JavaScript off.
+- **Do not imply an alert exists when none is selected.** The starter archives leads in KV and
+  sends no email/Slack notification; production use requires an owner-selected and tested path.
+- **Progressive enhancement.** Content pages render without JavaScript; the contact form fails
+  closed when Turnstile is unavailable and offers the published phone/email fallback.
   Anything that hides an element must be the same thing that reveals it.
 - **Build to WCAG 2.2 AA regardless of what binds them.** Superset of 2.1 and 2.0, so one
   target covers every jurisdiction. Nearly free at build time, several times the cost as a
@@ -180,3 +186,5 @@ Read `references/traps.md`. Entries that recur across projects:
 | `references/build.md` | Standing instructions, phases, stack profile, definition of done |
 | `references/compliance.md` | Which accessibility law binds this client; what to build, test, publish |
 | `references/traps.md` | Silent failures, with symptom and fix |
+| [`../../docs/aw-migration-process.md`](../../docs/aw-migration-process.md) | AW repository boundaries, migration gates, form/email architecture and rollout limits |
+| [`../../docs/aw-migration-checklist.md`](../../docs/aw-migration-checklist.md) | Checklist to copy into each site's own repository |

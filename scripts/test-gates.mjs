@@ -210,7 +210,9 @@ gate('site.ts absent — refuses legibly, no ENOENT stack', {
  * check-secrets — needs `wrangler`, so it gets a stub on PATH
  * ──────────────────────────────────────────────────────────────────────── */
 
-const EXAMPLE = 'BREVO_API_KEY="xkeysib-..."\nLEADS_EXPORT_TOKEN="a long random string"\n';
+const EXAMPLE =
+  'TURNSTILE_SECRET_KEY="local-only placeholder"\n' +
+  'LEADS_EXPORT_TOKEN="a long random string"\n';
 
 /**
  * A fake `npx` on PATH, so the comparison logic is tested without a network,
@@ -237,8 +239,11 @@ if (process.platform === 'win32') {
     detail: 'skipped on Windows — npx is npx.cmd and a PATH shim will not stand in',
   });
 } else {
-  const bothSet = npxStub(`echo '[{"name":"BREVO_API_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]'`);
-  const oneSet = npxStub(`echo '[{"name":"LEADS_EXPORT_TOKEN"}]'`);
+  const bothSet = npxStub(
+    `echo '[{"name":"TURNSTILE_SECRET_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]'`,
+  );
+  const oneSet = npxStub(`echo '[{"name":"TURNSTILE_SECRET_KEY"}]'`);
+  const missingTurnstile = npxStub(`echo '[{"name":"LEADS_EXPORT_TOKEN"}]'`);
   const notDeployed = npxStub(`echo "workers.api.error.script_not_found" >&2; exit 1`);
   const loggedOut = npxStub(`echo "You are not authenticated. Run wrangler login." >&2; exit 1`);
 
@@ -251,13 +256,13 @@ if (process.platform === 'win32') {
    */
   const demandsJsonFlag = npxStub(
     'case " $* " in\n' +
-      '  *" --format json "*) echo \'[{"name":"BREVO_API_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]\' ;;\n' +
+      '  *" --format json "*) echo \'[{"name":"TURNSTILE_SECRET_KEY"},{"name":"LEADS_EXPORT_TOKEN"}]\' ;;\n' +
       '  *) echo "this stub requires --format json" >&2; exit 1 ;;\n' +
       'esac',
   );
 
   /* Output that is not the JSON this expects — what a changed default looks like. */
-  const prettyTable = npxStub(`printf 'Secret Name\\n-----------\\nBREVO_API_KEY\\n'`);
+  const prettyTable = npxStub(`printf 'Secret Name\\n-----------\\nTURNSTILE_SECRET_KEY\\n'`);
 
   /* A deployed worker genuinely holding nothing. Parsed, empty, and an ANSWER. */
   const noneSet = npxStub(`echo '[]'`);
@@ -274,7 +279,15 @@ if (process.platform === 'win32') {
     files: { '.dev.vars.example': EXAMPLE },
     env: { PATH: `${oneSet}:${process.env.PATH}` },
     expect: 1,
-    contains: 'BREVO_API_KEY',
+    contains: 'LEADS_EXPORT_TOKEN',
+  });
+
+  gate('Turnstile secret missing — must refuse', {
+    script: 'check-secrets.mjs',
+    files: { '.dev.vars.example': EXAMPLE },
+    env: { PATH: `${missingTurnstile}:${process.env.PATH}` },
+    expect: 1,
+    contains: 'TURNSTILE_SECRET_KEY',
   });
 
   gate('worker not deployed — nothing to check, not everything missing', {
@@ -348,10 +361,10 @@ if (process.platform === 'win32') {
     files: { '.dev.vars.example': EXAMPLE },
     env: { PATH: `${noneSet}:${process.env.PATH}` },
     expect: 1,
-    contains: 'BREVO_API_KEY',
+    contains: 'TURNSTILE_SECRET_KEY',
   });
 
-  for (const d of [bothSet, oneSet, notDeployed, loggedOut, demandsJsonFlag, prettyTable, noneSet, tooOldForFlag]) {
+  for (const d of [bothSet, oneSet, missingTurnstile, notDeployed, loggedOut, demandsJsonFlag, prettyTable, noneSet, tooOldForFlag]) {
     rmSync(d, { recursive: true, force: true });
   }
 }
@@ -471,7 +484,7 @@ const headersFile = [
   STAR,
   '  Referrer-Policy: strict-origin-when-cross-origin',
   '  Permissions-Policy: geolocation=(), camera=()',
-  "  Content-Security-Policy: default-src 'self'",
+  "  Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-src 'self' https://challenges.cloudflare.com",
   '',
   '/_astro/' + '*',
   '  Cache-Control: public, max-age=31536000, immutable',
@@ -1356,7 +1369,26 @@ gate('refuses 172.16, the first private address in the range', {
 describe('verify — against a fixture site');
 
 const FIXTURE_SITE = join(KIT, 'scripts', 'fixture-site.mjs');
-let fixturePort = 8330;
+
+function availableFixturePort() {
+  const script = [
+    "const net = require('node:net');",
+    "const server = net.createServer();",
+    "server.listen(0, '127.0.0.1', () => {",
+    "  process.stdout.write(String(server.address().port));",
+    '  server.close();',
+    '});',
+  ].join('\n');
+  const run = spawnSync(process.execPath, ['-e', script], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  const port = Number(run.stdout?.trim());
+  if (run.status !== 0 || !Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`could not allocate an ephemeral fixture port: ${(run.stderr ?? '').trim()}`);
+  }
+  return port;
+}
 
 /* The project files verify reads from disk. The served site is the fixture;
    these are what it compares against. */
@@ -1380,17 +1412,21 @@ const VERIFY_FILES = {
  * cannot fail the next with EADDRINUSE.
  */
 function startFixture(faults) {
-  const port = ++fixturePort;
-  const args = [FIXTURE_SITE, '--port', String(port), ...(faults ? ['--faults', faults] : [])];
-  const child = spawn(process.execPath, args, { stdio: 'ignore' });
-  const probe = `fetch('http://127.0.0.1:${port}/__ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))`;
-  for (let i = 0; i < 60; i++) {
-    if (spawnSync(process.execPath, ['-e', probe], { stdio: 'ignore' }).status === 0) {
-      return { child, origin: `http://127.0.0.1:${port}` };
+  let lastPort;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const port = availableFixturePort();
+    lastPort = port;
+    const args = [FIXTURE_SITE, '--port', String(port), ...(faults ? ['--faults', faults] : [])];
+    const child = spawn(process.execPath, args, { stdio: 'ignore' });
+    const probe = `fetch('http://127.0.0.1:${port}/__ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))`;
+    for (let i = 0; i < 60; i++) {
+      if (spawnSync(process.execPath, ['-e', probe], { stdio: 'ignore' }).status === 0) {
+        return { child, origin: `http://127.0.0.1:${port}` };
+      }
     }
+    child.kill('SIGKILL');
   }
-  child.kill('SIGKILL');
-  throw new Error(`fixture-site did not start on ${port}`);
+  throw new Error(`fixture-site did not start on any OS-assigned port (last tried: ${lastPort})`);
 }
 
 /** Strip the colour before looking for a mark, or nothing ever matches. */

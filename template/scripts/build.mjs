@@ -47,6 +47,15 @@ if (env !== 'staging' && env !== 'production') {
   process.exit(1);
 }
 
+if (env === 'production' && !process.env.PUBLIC_TURNSTILE_SITE_KEY?.trim()) {
+  console.error(
+    `\n${RED}✗ PUBLIC_TURNSTILE_SITE_KEY is not set${RESET}\n\n` +
+      '  Production contact forms require a public Turnstile widget key. Set it in\n' +
+      '  the build environment; set TURNSTILE_SECRET_KEY separately as a Worker secret.\n',
+  );
+  process.exit(1);
+}
+
 /*
  * The site URL per environment. Read from package.json rather than restated
  * here, so there is one place a project sets its hostnames.
@@ -87,6 +96,12 @@ const run = (args) =>
     : step('npx', ['--no-install', 'astro', ...args]);
 
 console.log(`${DIM}building ${env} → ${SITE_URLS[env]}${RESET}\n`);
+step(process.execPath, [
+  '--experimental-strip-types',
+  '--test',
+  'scripts/test-turnstile.mjs',
+  'scripts/test-origin.mjs',
+]);
 
 if (env === 'production') {
   /* Refuse a production build of a template that has not been designed yet.

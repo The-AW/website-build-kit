@@ -6,7 +6,7 @@ end to end, see [how-to-start.md](how-to-start.md).
 ## Install
 
 ```bash
-git clone git@github.com:nurkamol/website-build-kit.git ~/coding/website-build-kit
+git clone https://github.com/The-AW/website-build-kit.git ~/coding/website-build-kit
 cd ~/coding/website-build-kit
 ./install.sh              # symlinks — updates when you pull
 ./install.sh --copy       # copies instead, if you prefer snapshots
@@ -46,7 +46,7 @@ off Elementor" or "does our site meet WCAG?" picks it up without the command.
 ## Setting up a new site from the template
 
 ```bash
-npx degit nurkamol/website-build-kit/template my-site
+npx degit The-AW/website-build-kit/template my-site
 cd my-site && npm install
 ```
 
@@ -56,8 +56,9 @@ Then, in order. Each step is read by everything after it:
 
 1. **`src/data/business.ts`** — name, phone, address, hours, service areas. Everything else
    reads from it, including the structured data
-2. **`src/data/services.ts`**, `areas.ts`, `categories.ts` — on a migration, category slugs must
-   match the source CMS exactly or every `/category/<slug>/` URL breaks
+2. **`src/data/services.ts`**, `areas.ts`, `categories.ts` — on a migration, preserve source
+   taxonomy and URL slugs exactly, whether the source was a CMS or a static file tree, or every
+   `/category/<slug>/` URL breaks
 3. **`src/styles/tokens.css`** — brand colours and the type scale
 4. **`src/data/site.ts`** — `PRODUCTION_HOSTS`, and the client's **own** analytics IDs. Leave
    them empty rather than inheriting an ID from another project
@@ -76,7 +77,7 @@ npm run recon -- https://old-site.com        # on a migration, BEFORE designing 
 npm run dev                                  # layout and content work
 npm run tells                                # what is undecided, and the design tells
 npm run check                                # types — a bad edit should fail the build
-npm run build:staging && npx wrangler dev    # real bindings, forms, redirects, 404s
+npm run build:staging && npx wrangler dev    # real bindings; configure Turnstile before form tests
 npm run verify -- https://new.example.com    # the DEPLOYED site. exits non-zero
 npm run a11y                                 # accessibility check, one URL per family
 npm run handover                             # docs/handover.md → PDF, for the client
@@ -88,9 +89,17 @@ server models none of them, and they are exactly where things break.
 ## Secrets
 
 ```bash
-npx wrangler secret put BREVO_API_KEY
+npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put LEADS_EXPORT_TOKEN     # openssl rand -base64 32
 ```
+
+The starter stores validated submissions in KV but sends no email or Slack notifications. No
+notification provider or channel is selected; resolve that owner decision and test the recovery
+path before using the form in production.
+
+Set the public `PUBLIC_TURNSTILE_SITE_KEY` in the build environment and configure the Turnstile
+widget's allowed hostnames. It is embedded in the page and is not a secret; never expose the
+server-side secret through a `PUBLIC_` variable.
 
 Locally, copy `.dev.vars.example` to `.dev.vars` — gitignored. Never the repo, never chat.
 

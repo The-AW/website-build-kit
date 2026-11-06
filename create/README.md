@@ -23,11 +23,12 @@ A skeleton, not a theme. It ships **no palette, no typeface and no home page** �
 so that two sites built from it cannot look alike. What it does ship is the part that takes
 longest to get right and is easiest to get subtly wrong:
 
-- **A form endpoint** with server-side validation, a honeypot, and the lead written to
-  durable storage **before** the email provider is called — so a provider outage costs a
-  notification, never a lead. It works with JavaScript off.
+- **A form endpoint** with server-side validation, Cloudflare Turnstile/Siteverify, a honeypot
+  and a KV lead archive. No email or Slack notification transport is selected or configured;
+  success means the lead was stored, not that anyone was alerted. Turnstile requires JavaScript,
+  and the form fails closed if verification is unavailable.
 - **Environment derived from one build variable** — indexability, analytics, canonical host,
-  which store leads land in, who gets notified. Nothing toggled by hand at go-live, and a bare
+  and which store leads land in. No notification recipient is configured. Nothing toggled by hand at go-live, and a bare
   build with no environment set is refused rather than quietly publishing `localhost`
   canonicals.
 - **A media pipeline** — AVIF and WebP per width, a dimensions manifest so nothing shifts,

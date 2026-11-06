@@ -68,7 +68,7 @@ Missing them is what stalls a build on day one.
 | **Who owns each account** | GA4, Search Console, the registrar, the booking tool. An unreachable previous agency is a this-week problem, not a launch-day one |
 | **Brand assets** | Logo light *and* dark, a vector favicon, brand hexes. Look at them — supplied "favicons" are frequently a different logo entirely |
 | **Business facts** | Name, phone, address, hours, service areas, credentials, founding year |
-| **Who answers enquiries** | The inbox that gets form notifications, and who is accountable if one is lost |
+| **Who owns enquiry follow-up** | Email/Slack notification transport is pending; decide the channel, destination, and accountable operator before production. A KV archive does not alert anyone |
 | **What counts as a win** | Phone call, form, booking, demo. **One.** It settles every layout argument later, and picks the archetype |
 | **Where their customers are** | Country, and any state or province. Decides which accessibility and privacy law binds them |
 
@@ -147,7 +147,7 @@ Then watch the first week. `runbook.md` §4 has the table.
 If you already know every answer and just want the skeleton:
 
 ```bash
-npx degit nurkamol/website-build-kit/template my-site
+npx degit The-AW/website-build-kit/template my-site
 cd my-site && npm install && npm run dev
 ```
 

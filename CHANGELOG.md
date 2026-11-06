@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-06 — AW migration process (unreleased)
+
+Added a reusable AW migration process and per-site checklist. AW content remains file-based with
+no CMS selected; Cloudflare Turnstile with server-side Siteverify is the selected anti-bot
+protection; email and Slack notification transport remains pending with no provider selected.
+Made Astro + Cloudflare Workers conditional on verified site fit; implemented Turnstile validation
+in the generic starter with exact-origin checks and focused security tests; and updated the
+existing website-build skill to scaffold from the AW fork. Site-specific content remains in
+separate site repositories.
+
 ## 2026-10-29 — 0.1.23, and the Monday audit went red under no commit at all
 
 `.github/workflows/audit.yml` shipped in 0.1.22 to separate the world moving from this repository

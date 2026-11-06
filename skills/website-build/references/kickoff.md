@@ -52,7 +52,7 @@ this-week problem. Ask it in the same breath as domain access.
 If a live site was given, **crawl it before Round 1** and arrive with the inventory already
 done — `npm run recon -- https://old-site.com` does the mechanical half in a minute.
 
-"I found 15 URLs, 5 template families, a contact form posting to Brevo, and 3 of 5 template
+"I found 15 URLs, 5 template families, a contact form posting to an existing third-party endpoint, and 3 of 5 template
 families failing contrast — confirm?" beats twenty questions.
 
 ### Round 1 — The business and the win
@@ -63,7 +63,7 @@ families failing contrast — confirm?" beats twenty questions.
 | Business type | Picks the archetype — [`archetypes.md`](archetypes.md) has the page shape, proof model and failure mode for each |
 | **The one action that counts as a win** | Phone call, form, booking, demo, purchase. Name *one*. It settles every later layout argument — what the hero CTA is, what the sticky mobile bar does, what "above the fold" must contain. It also picks the archetype in [`archetypes.md`](archetypes.md), which is the page shape you build to |
 | Existing site, designs, copy doc, or nothing | Decides whether this is migration or greenfield |
-| Who edits it after launch, and how | Files vs git-CMS vs headless. Files unless a non-technical editor must publish without a deploy |
+| Who edits it after launch, and how | AW content stays in version-controlled files; no CMS is selected. EmDash is a future possibility only |
 | Deadline and any hard constraints | Scope conversation, not an afterthought |
 
 ### Round 2 — Scope, content and integrations
@@ -72,8 +72,8 @@ families failing contrast — confirm?" beats twenty questions.
 | --- | --- |
 | Page count and repeating families | "8 services, 6 locations" → template + data, not 14 pages |
 | **Photography — does it exist, is a shoot budgeted, and who owns the rights?** | The largest single determinant of whether the result reads as expensive ([`design.md`](design.md) §2), and the one people underfund. Ask it here, not at phase 5, when the only options left are stock or a delay. Rights matter on a migration: photos on the old site may be the previous agency's or a stock licence that does not transfer |
-| Where form submissions go, and who is accountable if one is lost | Durable storage before any third-party call |
-| Email provider, and the verified sender address | Transactional, not marketing blast |
+| Where form submissions go, and who is accountable if one is lost | Decide storage and name an accountable operator |
+| Email/Slack notification transport | Pending owner decision; no provider or channel is selected |
 | Analytics — GA4, GTM, Plausible, none | Production-only, always |
 | Business facts | Name, phone (display + E.164), address, hours, service areas, credentials, founding year. One data file, read by both UI and structured data |
 | **Where their customers are** — country, and any state or province that matters | Decides which accessibility law binds them. [`compliance.md`](compliance.md) §1 maps it |
@@ -94,52 +94,41 @@ commonly missed one because it constrains **copy** rather than code. Ask before 
 that collects a field they are not allowed to hold.
 | Anything already written but unpublished | Check the source folders. Finished work sitting in a drafts folder is free content |
 
-**Then the provider decisions** — every one has a default, so ask only where the default may
-not hold. Full reasoning and alternatives in [`stacks.md`](stacks.md):
+**Then the provider decisions** — use an approved baseline where one exists and record every
+pending owner decision. Full reasoning is in [`stacks.md`](stacks.md):
 
 | Ask | Default | Ask properly when |
 | --- | --- | --- |
-| Target framework | Astro | There is a real application surface, not just a site |
-| Host | Cloudflare Workers | They are already committed elsewhere |
+| Target framework | Astro for content-first sites that fit | There is a real application surface, not just a site |
+| Host | Workers Static Assets for static-only output; Worker runtime when server behavior is needed | They are already committed elsewhere or runtime is unsuitable |
 | Media / CDN | Worker assets, R2 past ~15 MB | Image-heavy, video, or client-uploaded media |
-| **Who edits the site after launch** | — | **Always ask.** See below |
-| Transactional email | Brevo | Deliverability is critical, or they have a provider |
+| **Who edits the site after launch** | Version-controlled files; no CMS selected | Ask who will submit/review file edits. EmDash is a future possibility only |
+| Form notifications | Pending; neither email nor Slack is selected | Owner must choose transport, destination, data shared, retention and failure recovery before production |
 | Mailboxes | Google Workspace — **separate question** | Never send app mail through Workspace SMTP |
 | Analytics | GA4 if asked, else Cloudflare Web Analytics | Ask which report they actually read |
-| Spam | Honeypot; Turnstile if spam appears | Known abuse history |
+| Spam | Cloudflare Turnstile with server-side Siteverify, plus honeypot and rate limiting | Revisit only through an explicit documented decision; Turnstile is the AW baseline |
 | Booking / CRM | None | They already run Jobber, Housecall, HubSpot… |
 | Local listings | GBP + Bing + Apple | Not a service-area business |
 | Accessibility target | WCAG 2.2 AA | Never lower it. Raise the *testing* effort when §1 of `compliance.md` names a deadline |
 | **Domain and DNS access** | — | **Always ask. This blocks go-live more than anything technical** |
 
-**The two rows with no default are the two you cannot infer.** Every other line here can be
-settled from recon or from the default holding. These cannot: nothing in a crawl tells you who
-holds the registrar login, and nothing tells you whether the person updating opening hours next
-March writes markdown.
+Some decisions are intentionally pending rather than inferred from a provider default. The
+AW content decision is settled: content stays in files and no CMS is selected. Ask who will
+maintain those files so the handover can specify an accessible review workflow; do not add
+PagesCMS or another CMS by default.
 
-⚠ **THE CMS QUESTION WAS BEING SKIPPED, AND THE SKIP LOOKED LIKE A DECISION.** It used to read
-*"CMS · default None · ask when someone non-technical must publish without a deploy"* — and the
-instruction above is to ask only where the default may not hold. But whether a non-technical
-person will publish is not something the default can be tested against; it is a fact about the
-client. So the condition never tripped, the question never got asked, and sites shipped with
-markdown-in-git as an unexamined default. On one migration the word "CMS" appears nowhere in the
-build record, next to a discovery gate ticked as complete.
-
-Ask it as its own question, with the consequence attached rather than the product name:
+> *"After launch, who changes the opening hours or adds a service?"*
 
 > *"After launch, who changes the opening hours or adds a service?"*
 >
 > - **You or your developer** — content stays as markdown in the repo. Nothing to maintain, no
 >   second system to break, and every edit goes through review
-> - **Someone in the business, occasionally** — a git-based CMS. They get a form, it commits to
->   the repo, the site rebuilds. Free, and the content is still yours in git
-> - **Someone in the business, several times a week, with drafts** — the git round-trip starts to
->   chafe. Worth pricing a headless CMS, and worth saying out loud that it adds a network
->   dependency to every build
+> - **Someone in the business** — keep the content file-based and document who prepares and
+>   reviews repository changes. No CMS is selected for the AW baseline
+> - **A future workflow genuinely requires a CMS** — EmDash is the only future possibility noted
+>   here; it is not selected or installed and would require a separate owner decision
 
-`stacks.md` §4 picks the product once the answer is known — PagesCMS is the default on GitHub,
-Keystatic when you want typed collections, and the rule is git-based unless they publish several
-times a week or have more than a handful of editors.
+`stacks.md` §4 documents the file-based content baseline. EmDash remains a future possibility only.
 
 ### Round 3 — Design direction and mobile
 
@@ -199,9 +188,10 @@ Offer as a checklist. Everything here is implementable inside the stack profile 
 
 ### Core — assume unless told otherwise
 - Contact/quote form with server-side validation and field-level errors
-- Durable lead storage written **before** the email provider is called
-- Transactional notification email, with the recipient env-derived so staging never mails
-  the client
+- Cloudflare Turnstile with server-side Siteverify as the selected anti-bot protection
+- Email/Slack notification transport is pending; no provider or channel is selected. This is not
+  an included core feature and blocks production until the owner decides and delivery/recovery are tested
+- Lead storage only if the owner approves an archive, with retention and deletion documented
 - Token-protected CSV export of leads — enough while a developer is the only one fetching it.
   If the **client** will read leads, offer a console behind Cloudflare Access instead: a token in
   a URL is one paste away from being permanent. [`stacks.md`](stacks.md) §6
