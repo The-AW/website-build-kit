@@ -152,8 +152,15 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? ''
     </button>
   </div>
 
-  <!-- role="status" so the outcome is announced without stealing focus. -->
-  <p class="form__result" role="status" aria-live="polite" data-form-result hidden></p>
+  <!-- role="status" so the outcome is announced without stealing focus.
+       On success the form fields hide and this panel takes over, so the
+       confirmation is unmissable. Error messages stay inline. -->
+  <div class="form__result" role="status" aria-live="polite" data-form-result hidden>
+    <div class="form__result-icon" aria-hidden="true">✓</div>
+    <p class="form__result-title" data-result-title></p>
+    <p class="form__result-body" data-result-body></p>
+    <button class="btn btn--outline form__result-reset" type="button" data-result-reset hidden>Send another message</button>
+  </div>
 </form>
 
 <style>
@@ -265,7 +272,7 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? ''
   }
 
   .form__result {
-    padding: var(--space-s) var(--space-m);
+    padding: var(--space-m) var(--space-l);
     border: 1px solid var(--border);
     border-radius: var(--radius-s);
     font-size: var(--step--1);
@@ -275,10 +282,54 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? ''
     display: none;
   }
 
+  .form__result[data-tone='success'] {
+    text-align: center;
+    padding: var(--space-xl) var(--space-l);
+    border-color: var(--accent, var(--focus));
+    background: var(--surface);
+  }
+
+  .form__result-icon {
+    display: none;
+  }
+
+  [data-tone='success'] .form__result-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 3.5rem;
+    block-size: 3.5rem;
+    margin: 0 auto var(--space-m);
+    border-radius: 50%;
+    background: var(--accent, var(--focus));
+    color: var(--surface);
+    font-size: var(--step-3);
+    font-weight: var(--weight-bold);
+  }
+
+  .form__result-title {
+    font-size: var(--step-1);
+    font-weight: var(--weight-bold);
+    margin-block-end: var(--space-2xs);
+  }
+
+  .form__result-body {
+    color: var(--text-muted);
+  }
+
+  .form__result-reset {
+    margin-block-start: var(--space-m);
+  }
+
   .form__result[data-tone='error'] {
     border-color: var(--danger);
     background: var(--danger-bg);
     color: var(--danger);
+  }
+
+  .form__result[data-tone='error'] .form__result-icon,
+  .form__result[data-tone='error'] .form__result-title {
+    display: none;
   }
 </style>
 
@@ -387,11 +438,42 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? ''
       first?.focus();
     };
 
+    const resultTitle = form.querySelector<HTMLElement>('[data-result-title]')!;
+    const resultBody = form.querySelector<HTMLElement>('[data-result-body]')!;
+    const resultReset = form.querySelector<HTMLButtonElement>('[data-result-reset]')!;
+    const formGrid = form.querySelector<HTMLElement>('.form__grid')!;
+    const formFoot = form.querySelector<HTMLElement>('.form__foot')!;
+    const formChallenge = form.querySelector<HTMLElement>('.form__challenge');
+    const formTrap = form.querySelector<HTMLElement>('.form__trap');
+
     const say = (message: string, tone: 'success' | 'error') => {
-      result.textContent = message;
+      if (tone === 'success') {
+        formGrid.hidden = true;
+        formFoot.hidden = true;
+        if (formChallenge) formChallenge.hidden = true;
+        if (formTrap) formTrap.hidden = true;
+        resultTitle.textContent = 'Message sent!';
+        resultBody.textContent = message;
+        resultReset.hidden = false;
+      } else {
+        resultTitle.textContent = '';
+        resultBody.textContent = message;
+        resultReset.hidden = true;
+      }
       result.dataset.tone = tone;
       result.hidden = false;
     };
+
+    resultReset.addEventListener('click', () => {
+      result.hidden = true;
+      result.dataset.tone = '';
+      formGrid.hidden = false;
+      formFoot.hidden = false;
+      if (formChallenge) formChallenge.hidden = false;
+      if (formTrap) formTrap.hidden = false;
+      resultReset.hidden = true;
+      resetTurnstile();
+    });
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
