@@ -175,9 +175,9 @@ step(process.execPath, ['scripts/check-copy.mjs', ...(env === 'production' ? ['-
 step(process.execPath, ['scripts/check-alt.mjs', ...(env === 'production' ? ['--strict'] : [])]);
 
 step(process.execPath, ['scripts/check-env.mjs']);
+step(process.execPath, ['scripts/check-sitemap.mjs']);
 
 if (env === 'production') {
-  step(process.execPath, ['scripts/check-sitemap.mjs']);
   /* A redirect map is the one migration artefact edited by hand, in bulk, about
      URLs nobody can see any more. Every failure it has is invisible at deploy. */
   step(process.execPath, ['scripts/check-redirects.mjs']);

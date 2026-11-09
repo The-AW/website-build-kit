@@ -29,7 +29,7 @@ npm run a11y
 npm run reflow
 ```
 
-A configured `CLOUDFLARE_API_TOKEN` provided through BYOK is valid auth when `wrangler whoami` succeeds. Missing Wrangler OAuth by itself does not mean API access is missing; do not run `wrangler login` when the configured token works. The build refuses host overrides/placeholders and staging/production target reuse. Staging must be noindex, emit no production sitemap and show the non-production marker.
+A configured `CLOUDFLARE_API_TOKEN` provided through BYOK is valid auth when `wrangler whoami` succeeds. Missing Wrangler OAuth by itself does not mean API access is missing; do not run `wrangler login` when the configured token works. The build refuses host overrides/placeholders and staging/production target reuse. Its environment-aware search gate verifies staging page meta, response header and robots disallow-all, rejects any staging sitemap, and checks every canonical host; production requires a host-matched sitemap index and robots directive.
 
 ## 3. Production release gate
 

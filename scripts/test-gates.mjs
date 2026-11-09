@@ -582,15 +582,19 @@ if (process.platform === 'win32') {
  * check-sitemap — a URL both listed and noindex
  * ──────────────────────────────────────────────────────────────────────── */
 
-const sitemapXml = (paths) =>
+const sitemapXml = (paths, origin = 'https://client.co.uk') =>
   `<?xml version="1.0" encoding="UTF-8"?><urlset>${paths
-    .map((p) => `<url><loc>https://example.com${p}</loc></url>`)
+    .map((p) => `<url><loc>${origin}${p}</loc></url>`)
     .join('')}</urlset>`;
+const sitemapIndexXml = (origin = 'https://client.co.uk') =>
+  `<?xml version="1.0" encoding="UTF-8"?><sitemapindex><sitemap><loc>${origin}/sitemap-0.xml</loc></sitemap></sitemapindex>`;
 
-const page = (robots) =>
+const page = (robots, canonical = 'https://client.co.uk/', body = '<p>hello</p>') =>
   `<!doctype html><html><head>${
     robots ? `<meta name="robots" content="${robots}">` : ''
-  }</head><body><p>hello</p></body></html>`;
+  }<link rel="canonical" href="${canonical}"></head><body>${body}</body></html>`;
+const productionRobots = (host = 'https://client.co.uk') =>
+  `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${host}/sitemap-index.xml\n`;
 
 describe('check-sitemap');
 
@@ -601,39 +605,128 @@ gate('no dist — refuses', {
   contains: 'no dist',
 });
 
-gate('no sitemap — staging build, nothing to check', {
+gate('staging noindex signals agree and no sitemap is emitted', {
   script: 'check-sitemap.mjs',
-  files: { 'dist/client/index.html': page(null) },
+  env: { PUBLIC_SITE_ENV: 'staging', PUBLIC_SITE_URL: 'https://staging.client.co.uk' },
+  files: {
+    'dist/client/index.html': page('noindex, nofollow', 'https://staging.client.co.uk/'),
+    'dist/client/robots.txt': 'User-agent: *\nDisallow: /\n',
+    'dist/client/_headers': '/*\n  X-Robots-Tag: noindex\n',
+  },
   expect: 0,
+  contains: 'staging is noindex',
 });
 
-gate('sitemap and noindex agree', {
+gate('staging sitemap file — must refuse', {
   script: 'check-sitemap.mjs',
+  env: { PUBLIC_SITE_ENV: 'staging', PUBLIC_SITE_URL: 'https://staging.client.co.uk' },
   files: {
-    'dist/client/sitemap-0.xml': sitemapXml(['/', '/about/']),
-    'dist/client/index.html': page(null),
-    'dist/client/about/index.html': page(null),
+    'dist/client/sitemap-index.xml': sitemapXml(['/'], 'https://staging.client.co.uk'),
+    'dist/client/index.html': page('noindex, nofollow', 'https://staging.client.co.uk/'),
+    'dist/client/robots.txt': 'User-agent: *\nDisallow: /\n',
+    'dist/client/_headers': '/*\n  X-Robots-Tag: noindex\n',
+  },
+  expect: 1,
+  contains: 'Staging must not emit sitemap files',
+});
+
+gate('staging missing response noindex header — must refuse', {
+  script: 'check-sitemap.mjs',
+  env: { PUBLIC_SITE_ENV: 'staging', PUBLIC_SITE_URL: 'https://staging.client.co.uk' },
+  files: {
+    'dist/client/index.html': page('noindex, nofollow', 'https://staging.client.co.uk/'),
+    'dist/client/robots.txt': 'User-agent: *\nDisallow: /\n',
+    'dist/client/_headers': '/*\n  X-Frame-Options: DENY\n',
+  },
+  expect: 1,
+  contains: 'Staging _headers must include X-Robots-Tag: noindex',
+});
+
+gate('staging missing robots meta noindex — must refuse', {
+  script: 'check-sitemap.mjs',
+  env: { PUBLIC_SITE_ENV: 'staging', PUBLIC_SITE_URL: 'https://staging.client.co.uk' },
+  files: {
+    'dist/client/index.html': page(null, 'https://staging.client.co.uk/'),
+    'dist/client/robots.txt': 'User-agent: *\nDisallow: /\n',
+    'dist/client/_headers': '/*\n  X-Robots-Tag: noindex\n',
+  },
+  expect: 1,
+  contains: 'Every staging HTML page must carry a robots noindex meta tag',
+});
+
+  gate('sitemap and noindex agree', {
+    script: 'check-sitemap.mjs',
+    env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+    files: {
+      'dist/client/sitemap-index.xml': sitemapIndexXml(),
+      'dist/client/sitemap-0.xml': sitemapXml(['/', '/about/']),
+      'dist/client/robots.txt': productionRobots(),
+      'dist/client/index.html': page(null, 'https://client.co.uk/'),
+    'dist/client/about/index.html': page(null, 'https://client.co.uk/about/'),
   },
   expect: 0,
 });
 
-gate('a listed URL serving noindex — must refuse', {
-  script: 'check-sitemap.mjs',
-  files: {
-    'dist/client/sitemap-0.xml': sitemapXml(['/', '/about/']),
-    'dist/client/index.html': page(null),
-    'dist/client/about/index.html': page('noindex, nofollow'),
+  gate('a listed URL serving noindex — must refuse', {
+    script: 'check-sitemap.mjs',
+    env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+    files: {
+      'dist/client/sitemap-index.xml': sitemapIndexXml(),
+      'dist/client/sitemap-0.xml': sitemapXml(['/', '/about/']),
+      'dist/client/robots.txt': productionRobots(),
+      'dist/client/index.html': page(null, 'https://client.co.uk/'),
+    'dist/client/about/index.html': page('noindex, nofollow', 'https://client.co.uk/about/'),
   },
   expect: 1,
   contains: '/about/',
 });
 
-gate('the word "noindex" in prose is NOT a noindex page', {
+gate('production without a sitemap — must refuse', {
   script: 'check-sitemap.mjs',
+  env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
   files: {
-    'dist/client/sitemap-0.xml': sitemapXml(['/accessibility/']),
+    'dist/client/robots.txt': productionRobots(),
+    'dist/client/index.html': page(null, 'https://client.co.uk/'),
+  },
+  expect: 1,
+  contains: 'Production build must emit a sitemap',
+});
+
+  gate('a production canonical using staging host — must refuse', {
+    script: 'check-sitemap.mjs',
+    env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+    files: {
+      'dist/client/sitemap-index.xml': sitemapIndexXml(),
+      'dist/client/sitemap-0.xml': sitemapXml(['/']),
+      'dist/client/robots.txt': productionRobots(),
+      'dist/client/index.html': page(null, 'https://staging.client.co.uk/'),
+  },
+  expect: 1,
+  contains: 'canonical host https://staging.client.co.uk does not match production host',
+});
+
+  gate('production sitemap using staging host — must refuse', {
+    script: 'check-sitemap.mjs',
+    env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+    files: {
+      'dist/client/sitemap-index.xml': sitemapIndexXml(),
+      'dist/client/sitemap-0.xml': sitemapXml(['/'], 'https://staging.client.co.uk'),
+      'dist/client/robots.txt': productionRobots(),
+      'dist/client/index.html': page(null, 'https://client.co.uk/'),
+  },
+  expect: 1,
+  contains: 'does not use production host https://client.co.uk',
+});
+
+  gate('the word "noindex" in prose is NOT a noindex page', {
+    script: 'check-sitemap.mjs',
+    env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+    files: {
+      'dist/client/sitemap-index.xml': sitemapIndexXml(),
+      'dist/client/sitemap-0.xml': sitemapXml(['/accessibility/']),
+      'dist/client/robots.txt': productionRobots(),
     'dist/client/accessibility/index.html':
-      '<!doctype html><html><head></head><body><p>We use noindex on staging.</p></body></html>',
+      page(null, 'https://client.co.uk/accessibility/', '<p>We use noindex on staging.</p>'),
   },
   expect: 0,
 });

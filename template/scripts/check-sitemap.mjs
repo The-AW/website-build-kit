@@ -1,119 +1,161 @@
 /**
- * A URL cannot be in the sitemap AND serve `noindex`.
+ * Verify that built search directives and canonicals match the declared environment.
  *
- *   node scripts/check-sitemap.mjs        # after a production build
- *
- * Runs at the end of `build:production`, against dist/ — so the contradiction
- * is caught before the deploy rather than after, which is the only part
- * `npm run verify` cannot do.
- *
- * ── THE FAILURE THIS EXISTS FOR ────────────────────────────────────────────
- * A URL in the sitemap is a request to index it. The same URL serving
- * `noindex` is a refusal. Search Console reports the pair as **"Submitted URL
- * marked 'noindex'" — an error, not a warning**, counted against the whole
- * submission, so one contradictory page devalues the file every other page is
- * listed in.
- *
- * Seen on a live site: a `/search/` page sat in the sitemap and served
- * `noindex` from the day it was built. Nothing compares the two lists, so it
- * stayed invisible until the sitemap was actually submitted, weeks later.
- *
- * ── WHY A CHECK AND NOT A FIX ──────────────────────────────────────────────
- * The obvious fix is to make the sitemap derive from the pages' own `noindex`.
- * It cannot: `@astrojs/sitemap` decides inclusion in astro.config.mjs, which is
- * evaluated before any page renders, so at that moment nothing knows which
- * routes will emit the tag. The exclusion list in the config and the pages
- * themselves are two sources of truth by construction — this is what keeps them
- * honest.
+ * Runs from build.mjs after the static output and staging headers exist.
  */
-
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
-const RESET = '[0m';
-const RED = '[31m';
-const GREEN = '[32m';
-const DIM = '[2m';
+const RESET = '\x1b[0m';
+const RED = '\x1b[31m';
+const GREEN = '\x1b[32m';
+const DIM = '\x1b[2m';
+const errors = [];
+const add = (message) => errors.push(message);
 
-const root = ['dist/client', 'dist'].find((d) => existsSync(d));
+const root = ['dist/client', 'dist'].find((directory) => existsSync(directory));
 if (!root) {
   console.error('check-sitemap: no dist/ — run a build first.');
   process.exit(1);
 }
 
-/* Staging emits no sitemap, deliberately. Nothing to contradict. */
-const sitemaps = readdirSync(root).filter((f) => /^sitemap.*\.xml$/.test(f));
-if (!sitemaps.length) {
-  console.log(`${DIM}· no sitemap in ${root}/ — staging build, nothing to check${RESET}`);
-  process.exit(0);
+const walk = (directory) =>
+  readdirSync(directory).flatMap((entry) => {
+    const full = join(directory, entry);
+    return statSync(full).isDirectory() ? walk(full) : [full];
+  });
+const htmlFiles = walk(root).filter((file) => file.endsWith('.html'));
+const robotsPath = join(root, 'robots.txt');
+const headersPath = join(root, '_headers');
+const robots = existsSync(robotsPath) ? readFileSync(robotsPath, 'utf8') : '';
+let environment = process.env.PUBLIC_SITE_ENV;
+if (!environment) environment = /^Disallow:\s*\/\s*$/mi.test(robots) ? 'staging' : 'production';
+if (!['staging', 'production'].includes(environment)) {
+  console.error(`check-sitemap: unsupported PUBLIC_SITE_ENV ${JSON.stringify(environment)}.`);
+  process.exit(1);
 }
 
-const listed = new Set();
-for (const file of sitemaps) {
-  const xml = readFileSync(join(root, file), 'utf8');
-  for (const m of xml.matchAll(/<loc>([^<]+)<\/loc>/g)) {
-    const loc = m[1].trim();
-    if (/sitemap.*\.xml$/i.test(loc)) continue; // an index pointing at its children
-    try {
-      listed.add(new URL(loc).pathname);
-    } catch {
-      /* ignore a malformed loc — the build would have failed elsewhere */
+let expectedSiteUrl = process.env.PUBLIC_SITE_URL?.trim();
+if (!expectedSiteUrl && existsSync('aw-migration.json')) {
+  try {
+    const manifest = JSON.parse(readFileSync('aw-migration.json', 'utf8'));
+    expectedSiteUrl = manifest.hosts?.[environment];
+  } catch {
+    add('aw-migration.json is not valid JSON while resolving the expected canonical host.');
+  }
+}
+let expectedOrigin = '';
+try {
+  expectedOrigin = new URL(expectedSiteUrl).origin;
+} catch {
+  add(`No valid ${environment} site URL is available for canonical/sitemap checks.`);
+}
+
+const sitemapFiles = readdirSync(root).filter((file) => /^sitemap.*\.xml$/i.test(file));
+const attribute = (tag, name) => {
+  const match = new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(tag);
+  return match?.[2] ?? '';
+};
+const hasNoindex = (html) =>
+  [...html.matchAll(/<meta\b[^>]*>/gi)].some((match) =>
+    attribute(match[0], 'name').toLowerCase() === 'robots' && /\bnoindex\b/i.test(attribute(match[0], 'content')),
+  );
+const routeFor = (file) =>
+  ('/' + relative(root, file).split(sep).join('/')
+    .replace(/index\.html$/, '')
+    .replace(/\.html$/, '/'))
+    .replace(/\/{2,}/g, '/')
+    .replace(/([^/])$/, '$1/');
+
+if (!htmlFiles.length) add(`No HTML pages were built under ${root}/.`);
+for (const file of htmlFiles) {
+  const html = readFileSync(file, 'utf8');
+  const canonicalTags = [...html.matchAll(/<link\b[^>]*>/gi)]
+    .map((match) => match[0])
+    .filter((tag) => attribute(tag, 'rel').toLowerCase() === 'canonical');
+  const path = routeFor(file);
+  if (canonicalTags.length !== 1) {
+    add(`${path} must emit exactly one canonical link; found ${canonicalTags.length}.`);
+    continue;
+  }
+  try {
+    const canonical = new URL(attribute(canonicalTags[0], 'href'));
+    if (canonical.origin !== expectedOrigin) {
+      add(`${path} canonical host ${canonical.origin} does not match ${environment} host ${expectedOrigin || '(unset)'}.`);
     }
+  } catch {
+    add(`${path} canonical URL is missing or invalid.`);
   }
 }
 
-const walk = (dir) =>
-  readdirSync(dir).flatMap((entry) => {
-    const full = join(dir, entry);
-    return statSync(full).isDirectory() ? walk(full) : [full];
-  });
+const noindexed = htmlFiles
+  .filter((file) => hasNoindex(readFileSync(file, 'utf8')))
+  .map(routeFor);
 
-/*
- * Match the META TAG, not the word. The accessibility page explains what
- * `noindex` means in prose, and a substring search reports it as noindex —
- * a false positive that would train someone to ignore this check.
- */
-const ROBOTS_META = /<meta[^>]+name=["']robots["'][^>]+content=["'][^"']*\bnoindex\b/i;
+if (environment === 'staging') {
+  if (sitemapFiles.length) add(`Staging must not emit sitemap files; found ${sitemapFiles.join(', ')}.`);
+  if (!robots) add('Staging build must include robots.txt.');
+  if (/^Sitemap\s*:/mi.test(robots)) add('Staging robots.txt must not advertise a sitemap.');
+  if (!/^Disallow:\s*\/\s*$/mi.test(robots)) add('Staging robots.txt must disallow crawling with "Disallow: /".');
+  if (noindexed.length !== htmlFiles.length) {
+    const missing = htmlFiles.filter((file) => !hasNoindex(readFileSync(file, 'utf8'))).map(routeFor);
+    add(`Every staging HTML page must carry a robots noindex meta tag; missing on ${missing.join(', ') || '(none)'}.`);
+  }
+  const headers = existsSync(headersPath) ? readFileSync(headersPath, 'utf8') : '';
+  if (!/^\s*X-Robots-Tag:\s*noindex\b/im.test(headers)) {
+    add('Staging _headers must include X-Robots-Tag: noindex on every response.');
+  }
+  if (!errors.length) {
+    console.log(`${GREEN}✓${RESET} staging is noindex: ${htmlFiles.length} HTML pages, robots disallow-all, response header set, no sitemap, canonicals on ${expectedOrigin}${RESET}`);
+    process.exit(0);
+  }
+} else {
+  if (!sitemapFiles.length) add('Production build must emit a sitemap.');
+  if (!sitemapFiles.includes('sitemap-index.xml')) add('Production build must emit sitemap-index.xml.');
+  if (!robots) add('Production build must include robots.txt.');
+  if (!/^Allow:\s*\/\s*$/mi.test(robots)) add('Production robots.txt must include "Allow: /".');
+  const sitemapDirectives = robots.split(/\r?\n/).map((line) => line.trim()).filter((line) => /^Sitemap\s*:/i.test(line));
+  const expectedSitemap = `${expectedSiteUrl?.replace(/\/$/, '')}/sitemap-index.xml`;
+  if (sitemapDirectives.length !== 1 || sitemapDirectives[0]?.replace(/^Sitemap\s*:\s*/i, '') !== expectedSitemap) {
+    add(`Production robots.txt must reference exactly ${expectedSitemap}.`);
+  }
 
-const noindexed = walk(root)
-  .filter((f) => f.endsWith('.html'))
-  .filter((f) => ROBOTS_META.test(readFileSync(f, 'utf8')))
-/* ⚠ SEPARATORS NORMALISED — `relative()` RETURNS BACKSLASHES ON WINDOWS.
-   A URL path is always `/`. Without this the map produced `/about\\` for
-   `about\\index.html`, which matched nothing: check-sitemap's contradiction
-   check silently passed a site that listed a noindexed URL in its sitemap, and
-   Search Console reports that as an error against the whole submission. */
-  .map((f) => '/' + relative(root, f).split(sep).join('/')
-      .replace(/index\.html$/, '').replace(/\.html$/, '/'))
-  .map((p) => (p.endsWith('/') ? p : `${p}/`));
+  const listed = new Set();
+  for (const file of sitemapFiles) {
+    const xml = readFileSync(join(root, file), 'utf8');
+    for (const match of xml.matchAll(/<loc>([^<]+)<\/loc>/g)) {
+      const loc = match[1].trim().replace(/&amp;/g, '&');
+      try {
+        const url = new URL(loc);
+        if (url.origin !== expectedOrigin) {
+          add(`${file} URL ${loc} does not use production host ${expectedOrigin || '(unset)'}.`);
+        }
+        if (/sitemap.*\.xml$/i.test(url.pathname)) {
+          const childFile = url.pathname.split('/').filter(Boolean).at(-1);
+          if (childFile && !existsSync(join(root, childFile))) add(`${file} references missing sitemap ${loc}.`);
+        } else {
+          listed.add(url.pathname);
+        }
+      } catch {
+        add(`${file} contains an invalid <loc>: ${loc}`);
+      }
+    }
+  }
 
-const contradictions = noindexed.filter((p) => listed.has(p));
-
-if (!contradictions.length) {
-  console.log(
-    `${GREEN}✓${RESET} sitemap and noindex agree ` +
-      `${DIM}(${listed.size} listed, ${noindexed.length} noindex, no overlap)${RESET}`,
-  );
-  process.exit(0);
+  const contradictions = noindexed.filter((path) => listed.has(path));
+  if (contradictions.length) {
+    add(`${contradictions.length} URL(s) are in the sitemap AND serve noindex: ${contradictions.join(', ')}`);
+  }
+  if (!errors.length) {
+    console.log(`${GREEN}✓${RESET} production sitemap, robots and canonicals use ${expectedOrigin}; ${listed.size} URLs listed, ${noindexed.length} noindex pages, no overlap${RESET}`);
+    process.exit(0);
+  }
 }
 
-console.error(`\n${RED}✗ ${contradictions.length} URL(s) are in the sitemap AND serve noindex${RESET}\n`);
-for (const p of contradictions) console.error(`    ${p}`);
-
-console.error(
-  `\n  Search Console reports this as "Submitted URL marked 'noindex'" — an ERROR,\n` +
-    `  counted against the whole submission, not just these pages.\n\n` +
-    `  Fix ONE of the two, never leave both:\n` +
-    `    · exclude the route in the sitemap \`filter\` in astro.config.mjs, or\n` +
-    `    · stop the page emitting noindex\n`,
-);
-
-if (contradictions.includes('/')) {
-  console.error(
-    `  ${DIM}'/' is here because the scaffold home page sets noindex while \`unbuilt\`\n` +
-      `  is true. Replace src/pages/index.astro with the real page — a production\n` +
-      `  build of the template skeleton is not a thing to deploy.${RESET}\n`,
-  );
+console.error(`\n${RED}✗ check-sitemap refused ${environment} build:${RESET}`);
+for (const error of errors) console.error(`  - ${error}`);
+if (environment === 'production' && noindexed.some((path) => path === '/')) {
+  console.error(`${DIM}The scaffold homepage is intentionally noindex until the site replaces the unbuilt page.${RESET}`);
 }
-
+console.error('');
 process.exit(1);
