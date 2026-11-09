@@ -99,7 +99,7 @@ for (const file of docs) {
   /* ── 2. npm scripts ─────────────────────────────────────────────────────
    * The character class includes digits so `a11y` is one token, not `a`.
    */
-  for (const m of body.matchAll(/npm run ([a-z0-9:]+)/g)) {
+  for (const m of body.matchAll(/npm run ([a-z0-9:-]+)/g)) {
     if (!scripts.has(m[1])) fail(file, `npm run ${m[1]} is not a script in either package.json`);
   }
 
@@ -123,14 +123,16 @@ for (const file of docs) {
    * `business.phone.e164` must be reachable in business.ts. Skip file
    * extensions — `business.ts` is a filename, not a field.
    */
-  for (const m of body.matchAll(/`(business|site)\.([A-Za-z][A-Za-z0-9]*)/g)) {
-    const [, obj, field] = m;
-    if (['ts', 'js', 'mjs', 'json'].includes(field)) continue;
-    /* `site.es` in the i18n table is a ccTLD example, not a field. No real
-       field on these objects is under three characters. */
-    if (field.length < 3) continue;
-    const src = readFileSync(join(ROOT, `template/src/data/${obj}.ts`), 'utf8');
-    if (!new RegExp(`\\b${field}\\b`).test(src)) fail(file, `${obj}.${field} is not in ${obj}.ts`);
+  if (!isHistory(file)) {
+    for (const m of body.matchAll(/`(business|site)\.([A-Za-z][A-Za-z0-9]*)/g)) {
+      const [, obj, field] = m;
+      if (['ts', 'js', 'mjs', 'json'].includes(field)) continue;
+      /* `site.es` in the i18n table is a ccTLD example, not a field. No real
+         field on these objects is under three characters. */
+      if (field.length < 3) continue;
+      const src = readFileSync(join(ROOT, `template/src/data/${obj}.ts`), 'utf8');
+      if (!new RegExp(`\\b${field}\\b`).test(src)) fail(file, `${obj}.${field} is not in ${obj}.ts`);
+    }
   }
 }
 

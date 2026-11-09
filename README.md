@@ -55,11 +55,11 @@ works too if you want to be explicit.
 **→ [docs/how-to-start.md](docs/how-to-start.md)** — the three entry points, what to have
 ready before you begin, and what the first ten minutes should look like.
 
-**→ [docs/aw-migration-process.md](docs/aw-migration-process.md)** — AW's site-specific migration
-baseline, including content, form/email architecture and deployment boundaries.
+**→ [docs/aw-migration-process.md](docs/aw-migration-process.md)** — AW's pinned local scaffolder,
+static-first WordPress path, environment-specific deploy commands and rollback boundaries.
 
-**→ [docs/aw-migration-checklist.md](docs/aw-migration-checklist.md)** — the phase-gated checklist
-to copy into each site's own repository.
+**→ [docs/aw-migration-checklist.md](docs/aw-migration-checklist.md)** — the source inventory and
+minimum launch gate to copy into each site's own repository.
 
 ## What's in it
 
@@ -73,7 +73,7 @@ to copy into each site's own repository.
 | `install.sh` | Symlinks skills and commands into `~/.claude` |
 | `.claude-plugin/` | Plugin and marketplace manifests, so `/plugin install` works |
 | `site/` | The landing page. Hand-written HTML — see the note in `pages.yml` |
-| `create/` | The `npm create website-build-kit` scaffolder. Packs `template/` at publish time |
+| `create/` | Upstream npm scaffolder/package; not the AW fork path. AW uses `scripts/scaffold-aw.mjs` |
 | `CLAUDE.md` | Applies when working **on the kit** — house style, where things go |
 | `template/CLAUDE.md` | Ships with each new site — that site's conventions |
 
@@ -97,23 +97,20 @@ The skill loads these as needed rather than all at once.
 ## AW starting point
 
 ```
-Astro when the site fits → Workers Static Assets for a static-only build (no adapter or Worker script)
-→ add a Worker runtime and Astro adapter only for server routes, on-demand rendering or bindings
-→ file-based content in the site's own repository; no CMS is selected (EmDash is a future possibility only)
-→ first-party form endpoint with Turnstile + server-side Siteverify
-→ email/Slack notification transport pending; no provider or channel selected
+Use the pinned local AW fork scaffolder; the published npm creator is upstream, not this fork
+→ static Astro + Cloudflare Worker assets by default, with separate staging/production Worker targets
+→ file-based content in each site's own repository; no CMS, client assets or secrets in this kit
+→ contact runtime only when explicitly selected: same-origin API + Turnstile + existing private CRM
+→ no email, Slack, Brevo, KV archive or notification provider is mandatory for static launch
 ```
 
-This is conditional, not a one-size-fits-all mandate. A static-only Astro site can deploy `dist/`
-as Workers Static Assets without an Astro adapter, Worker script or runtime bindings. A first-party
-form endpoint or other server route needs a runtime; use the supported adapter for Astro routes and
-bindings. Recheck the official [Astro Cloudflare integration](https://docs.astro.build/en/guides/integrations-guide/cloudflare/)
+The AW path is conditional, not a one-size-fits-all mandate. A static Astro site uses no adapter,
+KV bindings or contact runtime. A site that later selects a form must implement the same-origin CRM
+adapter, Turnstile Siteverify, request/recovery controls and privacy terms; the retained contact
+draft is not proven end-to-end. No notification provider is a default. Recheck the official
+[Astro Cloudflare integration](https://docs.astro.build/en/guides/integrations-guide/cloudflare/)
 and [Cloudflare Workers Astro guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/astro/)
-for each project. The generic template uses file-based content, has no CMS configuration, and
-validates Turnstile server-side. It archives leads in KV but sends no email or Slack notification;
-the notification transport is pending and must be selected and tested before production use. The
-template also lacks request rate limiting, a total body-size cap, duplicate protection and durable
-notification recovery. See the [AW migration process](docs/aw-migration-process.md).
+when a site actually needs runtime routes.
 
 ## The template
 
@@ -131,21 +128,19 @@ does ship is the skeleton of the parts that take longest to get right:
   section rhythm, the three-card grid, face pairing, headline size, motion duration, focus
   ring, raw hex in components. No browser, so it runs in CI. `build:production` refuses while
   anything is left undecided
-- **Form endpoint** — first-party server-side validation, Turnstile/Siteverify, a honeypot and KV
-  lead archive. The starter sends no email or Slack notifications; select and test a transport
-  before production. It also has no total request-body cap, request rate limiter, duplicate
-  protection or durable notification recovery. `npm run test:turnstile` covers token,
-  hostname, action, failure and timeout handling; `npm run test:origin` covers exact-origin checks.
-  `npm run test:form` runs both suites manually, and both also gate every build
-- **Token-protected CSV export** of leads
-- **Environment derivation** — one build variable decides noindex, analytics, canonical host,
-  and which store leads land in; no notification recipient is configured
+- **Static AW base** — no form route, KV namespace, Turnstile key or runtime Worker binding is
+  included in the default build; optional contact source is isolated under `modules/contact/`
+- **Contact runtime draft** — retained for reference only; it archives to KV and is not the
+  existing-private-CRM adapter, not production-ready, and not proven end-to-end. The helper unit
+  tests (`npm run test:turnstile`, `npm run test:origin`, `npm run test:form`) do not prove CRM delivery
+- **Environment derivation** — `aw-migration.json` supplies verified hosts and distinct Worker
+  names; build/deploy guards refuse placeholders and cross-environment target reuse
 - **Build guard** that refuses *any* build without an environment, because a bare build
   publishes `localhost` canonical tags cleanly and with no error. It keys on the command, not
   on `CI` — `npm run build` is the most reflexive command in npm, and that is exactly where the
   hole was
 - **SEO** — canonical, OG, JSON-LD built from the same data file the UI reads
-- **Header, footer, contact form, page opening, CTA** — structure and behaviour, not styling:
+- **Header, footer, static contact details, page opening, CTA** — structure and behaviour, not styling:
   a mobile menu that replaces the header rather than layering under it, a focus trap, a sticky
   close control, and every interactive state a control needs
 - **Accessibility statement page** — a required published artefact under the EAA and PSBAR —
@@ -183,8 +178,8 @@ does ship is the skeleton of the parts that take longest to get right:
   internal link **and asks the inverse**: a route that nothing links to returns 200, sits in the
   sitemap, gets indexed, and cannot be reached by clicking — which is what a rewritten nav leaves
   behind
-- **The scaffolder stamps `websiteBuildKit.version` into the new site's `package.json`.** The
-  template is copied, not linked, so nothing the kit fixes afterwards reaches a site already
+- **The AW local scaffolder stamps version, commit and date into the new site's `package.json`.**
+  The template is copied, not linked, so nothing the kit fixes afterwards reaches a site already
   built — and without a stamp, *"is this site current?"* is archaeology against a repo whose
   history you have to guess at
 - **Navigation can be a CMS field**, because `check:cms` resolves every internal path in
@@ -254,12 +249,8 @@ does ship is the skeleton of the parts that take longest to get right:
   staging, refuses on production. It reads rendered text rather than source, so a `TODO` in a code
   comment or a `<script>` is ignored and "please confirm your email address" is not a hit — the
   exclusions are what stop it becoming a check people skip
-- **`npm run check:secrets`** — compares the secrets your code declares in `.dev.vars.example`
-  against what the deployed worker actually holds, and runs automatically at the end of
-  `deploy:staging` and `deploy:production`. A missing one never throws: `secret()` returns
-  `undefined`, the form still validates, still stores the lead, still returns 200 and still
-  thanks the visitor — it just emails nobody. That is weeks of enquiries found by someone
-  asking why the phone stopped ringing
+- **`npm run check:secrets`** — retained for sites with an explicitly enabled runtime module; it
+  is not run by static deploys, which have no secret contract
 - **`npm run shots`** — before/after screenshots of a migration at a mobile and a desktop width,
   paired into one page. Both sides read the same URL inventory, so a page that did not survive
   shows as a 404 beside its old screenshot. Take the before pass while the old site is still up;
@@ -271,9 +262,10 @@ does ship is the skeleton of the parts that take longest to get right:
   browser. `verify` uses only `fetch` and so can never see this: the page returns 200, the HTML
   is correct, and something inside it failed after the response was complete. A blocked
   third-party script, a CSP violation or a 404 asset is invisible to a status-code sweep
-- **Build guards** — `check-env` refuses a build whose environment disagrees with the routes in
-  `wrangler.jsonc`; `check-sitemap` fails a production build when a URL is both in the sitemap
-  and `noindex`
+- **Build guards** — `check-env` validates `aw-migration.json` against the generated
+  `.aw/wrangler-<environment>.jsonc`; staging and production cannot share a Worker. The checked-in
+  `wrangler.jsonc` is neutral and is not a deploy target. `check-sitemap` refuses production URLs
+  marked `noindex`
 - **`npm run dns`** — snapshot the zone before you move the apex, and diff it after. Moving a
   domain without carrying **MX kills the client's email**, and it fails silently: the bounces
   go to the sender, so the people who find out cannot tell the client
@@ -295,26 +287,37 @@ does ship is the skeleton of the parts that take longest to get right:
 - **`npm run seo`** *(optional)* — [full-site SEO audit](https://www.npmjs.com/package/@nurkamol/seo-audit),
   most useful as a **baseline**: capture the old site before migrating, then fail only on
   findings new since. Metadata parity is what a rebuild loses quietly
-- **Lead retention** — a KV `expirationTtl` from one number in `site.ts`, because "indefinitely"
-  is not a retention period
+- **Optional runtime retention** — define retention only if a site enables a form/CRM module; no
+  KV lead store is part of the static AW baseline
 - **`docs/`** — runbook (verification matrix, go-live order, first-week watch), content guide,
   analytics (the rules whose failure looks like success), a traps file seeded with this
   codebase's silent failures, and `handover.md` — the one document written for the client
   rather than a developer, rendered to PDF by `npm run handover`
 
 ```bash
-npx degit The-AW/website-build-kit/template my-site
-cd my-site && npm install
+npm run scaffold:aw -- /path/to/my-site
+cd /path/to/my-site
 ```
 
-For AW projects, scaffold from this fork so the site receives the current AW process and template.
-The inherited `create-website-build-kit` npm package is published separately by upstream and
-does not automatically include changes from this fork; use it for AW work only after AW publishes
-a matching version.
+Run this from a clean checkout of the reviewed AW fork commit. The local scaffolder copies tracked
+template files, scripts, `.gitignore` and `package-lock.json`, then stamps the commit. The published
+npm creator and `npx degit` fetch upstream, not the AW fork; do not use them for AW migrations.
 
-Node 22.12+. It builds green with no content, no images and no secrets. Fill in
-`src/data/business.ts` first — everything else reads from it. Then `npm run tells` will tell
-you what is still undecided.
+After filling in the site-specific manifest, use separate staging and production targets:
+
+```bash
+npm run build:staging
+npm run deploy:staging:dry-run
+npm run deploy:staging
+npm run build:production
+npm run deploy:production:dry-run
+npm run deploy:production -- --confirm-production
+```
+
+Node 22.12+. The generated starter deliberately refuses placeholder hosts/Workers and missing
+source/repository details; after the intake is complete, set `template: false`. Fill in
+`src/data/business.ts` first — everything else reads from it. Then `npm run tells` reports what
+design details remain undecided.
 
 ## The two CLAUDE.md files
 

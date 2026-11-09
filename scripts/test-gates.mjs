@@ -133,77 +133,272 @@ function describe(name) {
  * check-env — the guard that spent a whole project matching nothing
  * ──────────────────────────────────────────────────────────────────────── */
 
-const siteTs = (hosts) =>
-  `export const PRODUCTION_HOSTS = [${hosts.map((h) => `'${h}'`).join(', ')}] as const;\n`;
-const wrangler = (patterns) =>
-  JSON.stringify({ routes: patterns.map((p) => ({ pattern: p })) }, null, 2);
-
-const PROD = ['example.com', 'www.example.com'];
+const TEST_ACCOUNT_ID = '1234567890abcdef1234567890abcdef';
+const TEST_ZONE_ID = 'abcdef1234567890abcdef1234567890';
+const awManifest = (overrides = {}) => JSON.stringify({
+  schemaVersion: 1,
+  template: false,
+  sourceUrl: 'https://old-client.org',
+  hosts: { staging: 'https://staging.client.co.uk', production: 'https://client.co.uk' },
+  targets: {
+    repositoryUrl: 'https://github.com/The-AW/mae-sample-migration',
+    cloudflare: {
+      staging: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID },
+      production: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID },
+    },
+    workers: { staging: 'client-staging', production: 'client-production' },
+  },
+  inventories: { routes: 'recon/urls.txt', media: 'recon/media.csv', redirects: 'public/_redirects', redirectExceptions: [] },
+  forms: { choice: 'none', crmAdapter: '' },
+  acceptance: { criteria: [], recordedBy: '', recordedAt: '' },
+  rollback: { snapshotPath: '', wordpressOrigin: '', restoreSteps: [], cloudwaysRetirement: { requested: false, backupVerified: false, sharedServerDependenciesChecked: false } },
+  ...overrides,
+}, null, 2);
+const awConfig = (env) => JSON.stringify({
+  name: `client-${env}`,
+  routes: [{ pattern: env === 'staging' ? 'staging.client.co.uk' : 'client.co.uk', custom_domain: true }],
+  assets: { directory: '/tmp/dist', not_found_handling: '404-page' },
+});
 
 describe('check-env');
 
 gate('staging build, staging-only route', {
   script: 'check-env.mjs',
-  files: { 'src/data/site.ts': siteTs(PROD), 'wrangler.jsonc': wrangler(['new.example.com']) },
+  files: { 'aw-migration.json': awManifest(), '.aw/wrangler-staging.jsonc': awConfig('staging') },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 0,
 });
 
-gate('production build, staging-only route — must refuse', {
+gate('production build, production Worker and host', {
   script: 'check-env.mjs',
-  files: { 'src/data/site.ts': siteTs(PROD), 'wrangler.jsonc': wrangler(['new.example.com']) },
+  files: { 'aw-migration.json': awManifest(), '.aw/wrangler-production.jsonc': awConfig('production') },
   env: { PUBLIC_SITE_ENV: 'production' },
-  expect: 1,
-  contains: 'only routes',
+  expect: 0,
 });
 
-gate('production build, production routes with a path', {
+gate('production build pointing at staging config — must refuse', {
   script: 'check-env.mjs',
   files: {
-    'src/data/site.ts': siteTs(PROD),
-    'wrangler.jsonc': wrangler(['example.com/*', 'www.example.com/*']),
+    'aw-migration.json': awManifest(),
+    '.aw/wrangler-production.jsonc': JSON.stringify({ ...JSON.parse(awConfig('staging')), name: 'client-production' }),
   },
   env: { PUBLIC_SITE_ENV: 'production' },
-  expect: 0,
+  expect: 1,
+  contains: "does not target only the manifest's",
 });
 
-gate('staging build, production routes — must refuse', {
+gate('staging build pointing at production config — must refuse', {
   script: 'check-env.mjs',
-  files: { 'src/data/site.ts': siteTs(PROD), 'wrangler.jsonc': wrangler(['example.com/*']) },
+  files: { 'aw-migration.json': awManifest(), '.aw/wrangler-staging.jsonc': JSON.stringify({ ...JSON.parse(awConfig('production')), name: 'client-staging' }) },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 1,
-  contains: 'PRODUCTION domain',
+  contains: "does not target only the manifest's",
 });
 
-gate('new.example.com does NOT count as production', {
+gate('same Worker name for both environments — must refuse', {
   script: 'check-env.mjs',
-  files: { 'src/data/site.ts': siteTs(PROD), 'wrangler.jsonc': wrangler(['new.example.com']) },
+  files: {
+    'aw-migration.json': awManifest({ targets: {
+      repositoryUrl: 'https://github.com/The-AW/mae-sample-migration',
+      cloudflare: { staging: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID }, production: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID } },
+      workers: { staging: 'client', production: 'client' },
+    } }),
+    '.aw/wrangler-staging.jsonc': awConfig('staging'),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'different Worker names',
+});
+
+gate('placeholder production host — must refuse', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest({ hosts: { staging: 'https://staging.client.co.uk', production: 'https://example.com' } }),
+    '.aw/wrangler-production.jsonc': awConfig('production'),
+  },
   env: { PUBLIC_SITE_ENV: 'production' },
   expect: 1,
+  contains: 'placeholder',
 });
 
-gate('PRODUCTION_HOSTS missing — refuses, does not pass', {
+gate('placeholder staging host refuses the build', {
   script: 'check-env.mjs',
-  files: { 'src/data/site.ts': 'export const SOMETHING_ELSE = 1;\n', 'wrangler.jsonc': wrangler([]) },
+  files: {
+    'aw-migration.json': awManifest({ hosts: { staging: 'https://staging.example.com', production: 'https://client.co.uk' } }),
+    '.aw/wrangler-staging.jsonc': awConfig('staging'),
+  },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 1,
-  contains: 'cannot read PRODUCTION_HOSTS',
+  contains: 'hosts.staging is still a placeholder',
 });
 
-gate('PRODUCTION_HOSTS empty — refuses, does not pass', {
+gate('placeholder WordPress source refuses a build', {
   script: 'check-env.mjs',
-  files: { 'src/data/site.ts': siteTs([]), 'wrangler.jsonc': wrangler([]) },
+  files: {
+    'aw-migration.json': awManifest({ sourceUrl: 'https://wordpress.example.com' }),
+    '.aw/wrangler-staging.jsonc': awConfig('staging'),
+  },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 1,
-  contains: 'is empty',
+  contains: 'sourceUrl must be a real WordPress origin',
 });
 
-gate('site.ts absent — refuses legibly, no ENOENT stack', {
+gate('placeholder GitHub repo refuses a build', {
   script: 'check-env.mjs',
-  files: { 'wrangler.jsonc': wrangler([]) },
+  files: {
+    'aw-migration.json': awManifest({ targets: {
+      repositoryUrl: 'https://github.com/owner/repo',
+      cloudflare: { staging: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID }, production: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID } },
+      workers: { staging: 'client-staging', production: 'client-production' },
+    } }),
+    '.aw/wrangler-staging.jsonc': awConfig('staging'),
+  },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 1,
-  contains: 'not found',
+  contains: 'real GitHub owner/repository',
+});
+
+gate('same host for staging and production refuses', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest({ hosts: { staging: 'https://client.co.uk', production: 'https://client.co.uk' } }),
+    '.aw/wrangler-staging.jsonc': awConfig('staging'),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'Staging and production hosts must be different',
+});
+
+gate('placeholder Worker name refuses a build', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest({ targets: {
+      repositoryUrl: 'https://github.com/The-AW/mae-sample-migration',
+      cloudflare: { staging: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID }, production: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID } },
+      workers: { staging: 'client-template', production: 'client-production' },
+    } }),
+    '.aw/wrangler-staging.jsonc': awConfig('staging'),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'targets.workers.staging is still a placeholder',
+});
+
+gate('KV-only contact draft cannot be selected as private CRM', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest({ forms: { choice: 'private_crm', crmAdapter: '' } }),
+    '.aw/wrangler-staging.jsonc': awConfig('staging'),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'src/pages/api/contact.ts is missing',
+});
+
+gate('static target carries an accidental KV binding — must refuse', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest(),
+    '.aw/wrangler-staging.jsonc': JSON.stringify({ ...JSON.parse(awConfig('staging')), kv_namespaces: [{ binding: 'LEADS', id: 'placeholder' }] }),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'must not carry KV bindings',
+});
+
+gate('manifest absent — refuses legibly', {
+  script: 'check-env.mjs',
+  files: { '.aw/wrangler-staging.jsonc': awConfig('staging') },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'aw-migration.json not found',
+});
+
+describe('deploy-aw production guard');
+
+gate('production write without explicit command guard — must refuse before build', {
+  script: 'deploy-aw.mjs',
+  args: ['production'],
+  files: {},
+  expect: 1,
+  contains: 'require the explicit --confirm-production',
+});
+
+gate('production dry-run refuses the untouched starter manifest', {
+  script: 'deploy-aw.mjs',
+  args: ['production', '--dry-run'],
+  files: {
+    'aw-migration.json': JSON.stringify({
+      schemaVersion: 1,
+      template: true,
+      sourceUrl: '',
+      hosts: { staging: 'https://staging.example.com', production: 'https://example.com' },
+      targets: { workers: { staging: 'starter-staging', production: 'starter-production' } },
+      forms: { choice: 'none' },
+    }),
+  },
+  expect: 1,
+  contains: 'starter manifest',
+});
+
+gate('staging deploy refuses a missing account ID before Wrangler auth', {
+  script: 'deploy-aw.mjs',
+  args: ['staging', '--dry-run'],
+  files: {
+    'aw-migration.json': awManifest({ targets: {
+      repositoryUrl: 'https://github.com/The-AW/mae-sample-migration',
+      cloudflare: { staging: { accountId: '', zoneId: '' }, production: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID } },
+      workers: { staging: 'client-staging', production: 'client-production' },
+    } }),
+  },
+  expect: 1,
+  contains: 'accountId must be the 32-character Cloudflare account ID',
+});
+
+gate('staging deploy refuses a repeated placeholder account ID before auth', {
+  script: 'deploy-aw.mjs',
+  args: ['staging', '--dry-run'],
+  files: {
+    'aw-migration.json': awManifest({ targets: {
+      repositoryUrl: 'https://github.com/The-AW/mae-sample-migration',
+      cloudflare: { staging: { accountId: 'a'.repeat(32), zoneId: TEST_ZONE_ID }, production: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID } },
+      workers: { staging: 'client-staging', production: 'client-production' },
+    } }),
+  },
+  expect: 1,
+  contains: 'accountId must be the 32-character Cloudflare account ID',
+});
+
+gate('staging deploy refuses a media inventory without required columns', {
+  script: 'deploy-aw.mjs',
+  args: ['staging', '--dry-run'],
+  files: {
+    'aw-migration.json': awManifest(),
+    'recon/urls.txt': '/\n',
+    'recon/media.csv': 'image,alt\nlogo.png,Logo\n',
+  },
+  expect: 1,
+  contains: 'The media inventory must include columns',
+});
+
+gate('production deploy requires an existing rollback snapshot', {
+  script: 'deploy-aw.mjs',
+  args: ['production', '--dry-run'],
+  files: {
+    'aw-migration.json': awManifest({
+      acceptance: { criteria: ['route parity'], recordedBy: 'owner', recordedAt: '2026-11-09T10:00:00Z' },
+      rollback: {
+        snapshotPath: 'rollback/snapshot.json',
+        wordpressOrigin: 'https://wordpress-origin.example.net',
+        restoreSteps: ['restore origin'],
+        cloudwaysRetirement: { requested: false, backupVerified: false, sharedServerDependenciesChecked: false },
+      },
+    }),
+    'recon/urls.txt': '/\n',
+    'recon/media.csv': 'source_url,local_path,status,sha256,alt,usage\nhttps://old-client.org/logo.png,media/source/logo.png,downloaded,0123456789abcdef,Logo,header\n',
+  },
+  expect: 1,
+  contains: 'existing rollback snapshot',
 });
 
 /* ────────────────────────────────────────────────────────────────────────

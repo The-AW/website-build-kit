@@ -8,7 +8,9 @@ Astro (static) on Cloudflare Workers. Built from
 ```bash
 npm run dev                                  # localhost:4321 — no bindings, /api/* will not work
 npm run media                                # after adding or replacing any image
-npm run build:staging && npx wrangler dev    # localhost:8788, real KV + secrets
+npm run build:staging                        # static output; no Worker runtime or secrets
+npm run deploy:staging:dry-run               # generated staging Worker/config only
+npm run deploy:staging
 npm run a11y                                 # accessibility check, one URL per family, both schemes
 npx puppeteer browsers install chrome        # ...if that says Chrome is missing. npm 11 withholds
 #                                              install scripts, so the download may not have run
@@ -22,13 +24,15 @@ npm run verify -- https://new.example.com    # the deployed site, not the build.
 npm run console                              # console errors + failed requests, in a real browser
 npm run shots -- --before https://old-site.com  # visual record, WHILE the old site is still up
 npm run extract                              # captured HTML → recon/extracted/*.md
-npm run deploy:staging                       # or deploy:production
+npm run deploy:production:dry-run
+npm run deploy:production -- --confirm-production
 ```
 
 Node **22.12+**. `.node-version` pins the version this was built against.
 
-**Use `wrangler dev` for anything touching `/api/*`, redirects, or 404 status codes.** The
-Astro dev server models none of them, and they are exactly where things break.
+The default is static Astro + Cloudflare Worker assets. Use `wrangler dev --config
+.aw/wrangler-staging.jsonc` only after a site explicitly enables a server module; static deploys
+need no runtime route, KV binding or secret.
 
 ## Rules for this codebase
 
@@ -76,9 +80,11 @@ on in production and cannot be turned on by hand. It reads the live DOM rather t
 the build variable, so it alarms when the page disagrees with the environment (`NOT NOINDEX`,
 `ANALYTICS LIVE`). `?nobadge=1` hides it for a session; never make that persistent.
 
-**`src/data/site.ts` is the only environment switch.** `PUBLIC_SITE_ENV` derives
-indexability, analytics, canonical host, lead tag and which KV namespace leads land in. No
-notification recipient is configured. Do not add a second flag — extend this one.
+**`aw-migration.json` is the source of truth for hosts and targets.** It records separate staging
+and production hosts, accounts, zones and Worker names. Build scripts derive `PUBLIC_SITE_ENV` and
+`PUBLIC_SITE_URL` from it, validate the generated `.aw/wrangler-<environment>.jsonc`, and refuse
+placeholder or crossed targets. `src/data/site.ts` derives canonical/indexability/analytics from
+the validated build environment; it does not choose a KV namespace in the static default.
 
 **Images are AVIF + WebP.** `optimize-media.mjs` emits both per width and `<Img />` renders a
 `<picture>`; AVIF is 26% smaller at better quality (measured — see `stacks.md` §3). WebP is the
@@ -89,21 +95,16 @@ that a `.parent > img` selector stops matching once there is a `<picture>` — s
 reference it by key (`photos/hero-home`) via `<Img />`. Never an external URL, never a raw
 path. This is what keeps `width`/`height` on every image so nothing shifts.
 
-**Forms are archived in KV only.** `src/pages/api/contact.ts` has no email or Slack adapter;
-success means a lead was stored, not that an operator was notified. Email/Slack transport is
-pending owner decision, so do not use this form in production until a channel and recovery path
-are selected and tested. The cross-origin refusal runs *before* validation, for the same
-reason: ordered after, it only ever fires on submissions that were being rejected anyway.
+**The static default has no contact form runtime, KV archive or Turnstile requirement.** The
+retained `modules/contact/` code is an implementation draft that archives to KV; it is not AW's
+existing-private-CRM path and has not been proven end-to-end. Do not copy/enable it unchanged.
+If a site selects forms, implement a same-origin API + Turnstile Siteverify + site-specific adapter
+to AW's existing private CRM; no email/Slack/Brevo notification provider is mandatory. The build
+refuses `forms.choice: "private_crm"` until the CRM route and adapter exist and the route calls
+`submitToExistingCrm()`.
 
-**Stored leads expire.** `site.leadRetentionDays` becomes a KV `expirationTtl`, because KV
-keeps a value forever otherwise and "indefinitely" is not a retention period any regulator
-accepts. Keep the number and the privacy notice in step, and keep personal data out of KV
-metadata — `list()` returns metadata without reading values.
-
-**Content pages work without JavaScript; the form fails closed without Turnstile.** The form
-requires its client challenge and never accepts an unverified submission; the published phone
-and email details are the fallback. Anything that hides an element must be the same thing that
-reveals it — CSS that JS is expected to undo shows a blank page whenever a bundle fails.
+**Content pages work without JavaScript.** Keep interactive page content visible when bundles fail;
+the static contact-details page remains usable without an optional form module.
 
 **Analytics IDs are the client's own, or empty.** `src/data/site.ts` emits no tag unless both
 are set, so an unset ID cannot fall back to another project's container. Never copy one in.
@@ -111,11 +112,9 @@ The rules whose failure looks like success — double-counted pageviews, a conve
 two pipes, a trigger on `sent=1` that catches almost nothing — are in `docs/analytics.md`.
 Read it before adding any tag.
 
-**`package.json` records which kit this site came from.** `websiteBuildKit.version` is stamped at
-scaffold time and is never updated afterwards, because ⚠ **the template is copied, not linked** —
-nothing the kit fixes later reaches this site. A trap closed upstream, a gate added, a pipeline
-improved: none of it arrives. One site sat 19% behind on every image for weeks after AVIF landed.
-Compare that version against the kit's releases when something here looks older than it should.
+**`package.json` records which kit this site came from.** The local AW scaffolder stamps
+`websiteBuildKit.version` and the exact reviewed Git commit; the template is copied, not linked.
+Do not update the stamp without actually refreshing the site's kit files.
 
 **`npm run check:drift` says what this site is behind on.** The kit is copied, not linked, so
 nothing fixed upstream arrives here. It reports and changes nothing.
@@ -193,11 +192,12 @@ result. The recurring ones:
 
 Against the **deployed** site, not the build. A green build proves the bundler ran.
 
-The checklist is in `docs/runbook.md`: every route 200, unknown paths a real 404, legacy URLs
-301 to their specific equivalent, preserved paths still resolving, staging noindex with zero
-analytics references, form valid/empty/honeypot/cross-origin, and a submission producing both a
-stored record and a delivered email. It also carries the **go-live order** and the first-week
-watch list.
+The AW launch gate is `docs/aw-migration-checklist.md`: every inventoried route resolves or has a
+reviewed disposition, unknown paths return a real 404, redirects resolve, staging is noindex,
+production canonicals/robots/sitemap use the verified host, acceptance is recorded and rollback
+restores to the preserved WordPress origin. Forms are tested only when explicitly selected; a
+notification provider is not a static-site launch criterion. See `docs/aw-migration-process.md`
+for the exact command order and upload fallback.
 
 ## Handover
 

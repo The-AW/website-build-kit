@@ -1,4 +1,5 @@
 // @ts-check
+import { readFileSync } from 'node:fs';
 import { defineConfig, sessionDrivers } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import sitemap from '@astrojs/sitemap';
@@ -7,9 +8,11 @@ import { hastMedia } from './src/lib/hast-media.mjs';
 import { lastmodByRoute } from './src/lib/lastmod.mjs';
 import { noindexLegalRoutes } from './src/lib/legal-routes.mjs';
 
-// The build environment is the single source of truth for what this deploy
-// *is*. Nothing downstream re-derives it, and nothing is toggled by hand.
+// The site manifest supplies the environment-specific host; build.mjs validates
+// it and passes it through before Astro loads this config.
+const MIGRATION = JSON.parse(readFileSync(new URL('./aw-migration.json', import.meta.url), 'utf8'));
 const SITE_ENV = process.env.PUBLIC_SITE_ENV ?? 'development';
+const CONTACT_RUNTIME = MIGRATION.forms?.choice === 'private_crm';
 
 /*
  * Refuse to BUILD for a deploy without saying which deploy it is.
@@ -36,19 +39,18 @@ if (isBuilding && SITE_ENV === 'development') {
     'PUBLIC_SITE_ENV is not set.\n\n' +
       'A build must declare its environment, or it emits localhost canonical\n' +
       'URLs — cleanly, with no error, and wrong. Use one of:\n\n' +
-      '  npm run build:staging      → new.example.com, noindex\n' +
-      '  npm run build:production   → example.com, indexable\n\n' +
+      '  npm run build:staging      → manifest staging host, noindex\n' +
+      '  npm run build:production   → manifest production host, indexable\n\n' +
       'On Cloudflare Workers Builds, that is the build command in the dashboard.\n' +
       'For a one-off local build, set it inline:\n\n' +
       '  PUBLIC_SITE_ENV=staging npx astro build\n',
   );
 }
-const SITE_URL =
-  process.env.PUBLIC_SITE_URL ??
+const SITE_URL = process.env.PUBLIC_SITE_URL ??
   (SITE_ENV === 'production'
-    ? 'https://example.com'
+    ? MIGRATION.hosts.production
     : SITE_ENV === 'staging'
-      ? 'https://new.example.com'
+      ? MIGRATION.hosts.staging
       : 'http://localhost:4321');
 
 const isProduction = SITE_ENV === 'production';
@@ -70,7 +72,7 @@ const NOINDEX_LEGAL = noindexLegalRoutes();
 
 export default defineConfig({
   site: SITE_URL,
-  output: 'static',
+  output: CONTACT_RUNTIME ? 'server' : 'static',
 
   /*
    * This site has no sessions. Left unset, the Cloudflare adapter helpfully
@@ -83,7 +85,7 @@ export default defineConfig({
   // @ts-ignore - `null` exists at runtime (verified: `'null' in sessionDrivers`)
   // but is missing from Astro's exported driver types. Not @ts-expect-error:
   // when upstream adds it, expect-error would start failing every build.
-  session: { driver: sessionDrivers.null() },
+  ...(CONTACT_RUNTIME ? { session: { driver: sessionDrivers.null() } } : {}),
 
   /*
    * `platformProxy` is NOT set here. It was, for two projects, and the
@@ -95,9 +97,14 @@ export default defineConfig({
    * Nothing was lost: it existed to give `astro dev` real bindings, and the
    * answer to that is `wrangler dev`, which is what the runbook already says.
    */
-  adapter: cloudflare({
-    imageService: 'passthrough',
-  }),
+  ...(CONTACT_RUNTIME
+    ? {
+        adapter: cloudflare({
+          configPath: process.env.AW_WRANGLER_CONFIG,
+          imageService: 'passthrough',
+        }),
+      }
+    : {}),
   trailingSlash: 'always',
   build: { format: 'directory' },
   prefetch: { prefetchAll: true, defaultStrategy: 'hover' },

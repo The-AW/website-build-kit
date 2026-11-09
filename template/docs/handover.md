@@ -30,7 +30,7 @@ without our involvement.
 | Domain name | ⚠ registrar | ⚠ |
 | Website hosting | ⚠ Cloudflare account | ⚠ |
 | The site's code | ⚠ repository URL | ⚠ |
-| Form notifications | No email/Slack provider selected | Owner decision pending |
+| Form/CRM data path | None in the static default; if enabled, use the site's existing private CRM | ⚠ |
 | Analytics | ⚠ Google account | ⚠ |
 
 ⚠ **Attach `recon/dns.md`** if this was a migration. It is the record of what the domain
@@ -56,7 +56,7 @@ alarmed by the first invoice.
 | --- | --- | --- |
 | Domain renewal | Your address on the internet | ⚠ /year |
 | Hosting | Serves every page | ⚠ /month |
-| Form notifications | No provider or channel selected; monthly cost pending owner decision | — |
+| Optional CRM/form | Only if enabled for this site; use the existing CRM account | ⚠ |
 | ⚠ | ⚠ | ⚠ |
 
 **What happens if a payment fails**, in order of how bad it is:
@@ -64,9 +64,9 @@ alarmed by the first invoice.
 1. **Domain lapses** — the site goes dark and email may stop. Recoverable for a short grace
    period, then someone else can buy your address. This is the one to protect.
 2. **Hosting lapses** — the site goes dark, but nothing is lost. Restored by paying.
-3. **Notification transport is not configured.** This is a launch blocker: a stored lead does
-   not alert anyone. If a channel is selected later and it fails, the archive remains available;
-   follow the documented recovery process and update the privacy notice and costs.
+3. **Optional CRM path fails.** The static default has no contact form. If this site enabled a
+   CRM form, follow its site-specific recovery steps and tell the named operator; do not assume a
+   notification service or KV archive exists.
 
 ---
 
@@ -101,15 +101,12 @@ already have — it belongs here with the reason.
 
 ## 5. Your data, and how long it is kept
 
-**The starter saves enquiries in KV and does not send email or Slack notifications.** No
-notification transport is selected, and this blocks production launch. Until the owner chooses and
-tests one, a successful form submission does not alert anyone; records are available only through
-the protected export.
+**Static default:** the site does not collect form submissions. No form recipient, KV archive,
+CSV export or notification provider is configured or required.
 
-- **Where:** stored with the hosting, in your own account
-- **How long:** ⚠ days, then automatically deleted — see `leadRetentionDays` in
-  `src/data/site.ts`
-- **How to get it out:** ⚠ the export URL and where the token is kept
+**If this site enabled forms:** ⚠ document the same-origin API and existing private CRM data flow,
+fields, retention/deletion policy, recovery operator and privacy-notice wording here. Verify any
+third-party copies separately; do not assume a notification transport or export endpoint exists.
 
 ⚠ **Keep this number and your privacy notice in step.** If the privacy notice says one
 retention period and the site enforces another, the published one is the promise you are

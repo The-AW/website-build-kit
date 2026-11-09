@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "template": true,
+  "sourceUrl": "",
+  "hosts": {
+    "staging": "https://staging.example.com",
+    "production": "https://example.com"
+  },
+  "targets": {
+    "repositoryUrl": "",
+    "cloudflare": {
+      "staging": { "accountId": "", "zoneId": "" },
+      "production": { "accountId": "", "zoneId": "" }
+    },
+    "workers": {
+      "staging": "website-build-kit-template-staging",
+      "production": "website-build-kit-template-production"
+    }
+  },
+  "inventories": {
+    "routes": "recon/urls.txt",
+    "media": "recon/media.csv",
+    "redirects": "public/_redirects",
+    "redirectExceptions": []
+  },
+  "forms": {
+    "choice": "none",
+    "crmAdapter": ""
+  },
+  "acceptance": {
+    "criteria": [],
+    "recordedBy": "",
+    "recordedAt": ""
+  },
+  "rollback": {
+    "snapshotPath": "",
+    "wordpressOrigin": "",
+    "restoreSteps": [],
+    "cloudwaysRetirement": {
+      "requested": false,
+      "backupVerified": false,
+      "sharedServerDependenciesChecked": false
+    }
+  }
+}

@@ -7,6 +7,7 @@
     "cards:brand": "node scripts/brand-cards.mjs",
     "check:binary": "node scripts/check-binary.mjs",
     "check:refs": "node scripts/check-refs.mjs",
+    "scaffold:aw": "node scripts/scaffold-aw.mjs",
     "test:gates": "node scripts/test-gates.mjs"
   },
   "license": "MIT"

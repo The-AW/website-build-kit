@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
-import type { LeadRecord } from '../../lib/lead';
-import { site } from '../../data/site';
-import { kv, secret } from '../../lib/runtime';
+import type { LeadRecord } from '../../../../../src/lib/lead';
+import { site } from '../../../../../src/data/site';
+import { kv, secret } from '../../../../../src/lib/runtime';
 
 export const prerender = false;
 

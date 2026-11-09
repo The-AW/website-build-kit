@@ -597,7 +597,7 @@ writeFileSync(
     (formActions.length ? formActions.map((a) => `- \`${a}\``).join('\n') + '\n\n' : '_No forms in the sampled pages._\n\n') +
     `## Ask the client — markup cannot answer these\n\n` +
     `1. **Who owns the account** — the client, a previous agency, or someone unreachable?\n` +
-    `   An unreachable owner on a GA4 property or a registrar blocks go-live, not launch day.\n` +
+    `   Registrar/DNS/Cloudflare access blocks cutover; unknown analytics ownership is optional — omit unverified tags.\n` +
     `2. **Does it need to keep working**, or was it inherited and forgotten?\n` +
     `3. **Where does its data live**, and does anything need exporting before the old site dies?\n\n` +
     `The list of what was **deliberately dropped** matters as much as what was carried — it is\n` +

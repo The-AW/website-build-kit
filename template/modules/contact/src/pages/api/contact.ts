@@ -1,10 +1,10 @@
 import type { APIRoute } from 'astro';
-import { validateLead, leadKey, type LeadRecord } from '../../lib/lead';
-import { site } from '../../data/site';
-import { kv, secret } from '../../lib/runtime';
-import { verifyTurnstile } from '../../lib/turnstile';
-import { isSameOrigin } from '../../lib/origin';
-import { business } from '../../data/business';
+import { validateLead, leadKey, type LeadRecord } from '../../../../../src/lib/lead';
+import { site } from '../../../../../src/data/site';
+import { kv, secret } from '../../../../../src/lib/runtime';
+import { verifyTurnstile } from '../../../../../src/lib/turnstile';
+import { isSameOrigin } from '../../../../../src/lib/origin';
+import { business } from '../../../../../src/data/business';
 
 /**
  * Where the native browser form POST lands. One place, because these are routes and

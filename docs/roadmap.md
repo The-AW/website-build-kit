@@ -32,8 +32,8 @@ Kept so they are not re-proposed as new ideas.
 | | Why not |
 | --- | --- |
 | **Visual regression / screenshot diffing** | Notoriously noisy on marketing sites — a rotating testimonial or a lazy-loaded image fails the diff. High upkeep, low signal |
-| **Uptime monitoring** | A third-party service, not a script. The runbook already says to point one at a real page *and* the form endpoint |
-| **Lead-delivery alerting** | Email/Slack transport is not selected. The starter archives leads in KV and sends no notifications; owner must select/test an operational path before production |
+| **Uptime monitoring** | A third-party service, not a script. Monitor the real site and, only if enabled, its private-CRM contact endpoint |
+| **Lead-delivery alerting** | No email/Slack transport is a default. The static starter has no form or KV archive; optional contact work must integrate with the existing private CRM and remains outside static launch |
 | **CrUX field-data fetch** | `cfBeaconToken` gives real-user Core Web Vitals from the first visitor, months before CrUX covers a new domain. Already solved |
 | **Anything SEO-analytical** | Separate skills exist. This kit builds the site; it does not audit rankings |
 | **A CMS in the template** | AW content stays in version-controlled files; no CMS is selected. EmDash is a future possibility only. Shipping a CMS would make an unapproved decision for every site |

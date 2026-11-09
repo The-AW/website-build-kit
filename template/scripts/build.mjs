@@ -31,6 +31,12 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import {
+  formatTargetErrors,
+  readMigrationManifest,
+  validateMigrationManifest,
+  writeWranglerConfig,
+} from './lib/aw-migration.mjs';
 
 const RESET = '\x1b[0m';
 const RED = '\x1b[31m';
@@ -47,26 +53,40 @@ if (env !== 'staging' && env !== 'production') {
   process.exit(1);
 }
 
-if (env === 'production' && !process.env.PUBLIC_TURNSTILE_SITE_KEY?.trim()) {
+let manifest;
+try {
+  manifest = readMigrationManifest();
+} catch (error) {
+  console.error(`\n${RED}✗ ${error.message}${RESET}\n`);
+  process.exit(1);
+}
+
+const target = validateMigrationManifest(manifest, env, { phase: 'build' });
+if (!target.ok) {
+  console.error(`\n${RED}✗ invalid ${env} migration target${RESET}\n${formatTargetErrors(target)}\n`);
+  process.exit(1);
+}
+
+const requestedUrl = process.env.PUBLIC_SITE_URL?.trim();
+if (requestedUrl && requestedUrl !== target.siteUrl) {
+  console.error(
+    `\n${RED}✗ PUBLIC_SITE_URL does not match aw-migration.json${RESET}\n` +
+      `  Manifest: ${target.siteUrl}\n  Environment: ${requestedUrl}\n`,
+  );
+  process.exit(1);
+}
+
+const contactEnabled = manifest.forms.choice === 'private_crm';
+if (contactEnabled && env === 'production' && !process.env.PUBLIC_TURNSTILE_SITE_KEY?.trim()) {
   console.error(
     `\n${RED}✗ PUBLIC_TURNSTILE_SITE_KEY is not set${RESET}\n\n` +
-      '  Production contact forms require a public Turnstile widget key. Set it in\n' +
+      '  The enabled production contact module requires a public Turnstile widget key. Set it in\n' +
       '  the build environment; set TURNSTILE_SECRET_KEY separately as a Worker secret.\n',
   );
   process.exit(1);
 }
 
-/*
- * The site URL per environment. Read from package.json rather than restated
- * here, so there is one place a project sets its hostnames.
- *
- * ⚠ Kept OUT of src/data/site.ts on purpose: astro.config.mjs needs the value
- *   before any TypeScript is loaded, and site.ts imports `import.meta.env`.
- */
-const SITE_URLS = {
-  staging: 'https://new.example.com',
-  production: 'https://example.com',
-};
+const wranglerConfig = writeWranglerConfig(manifest, env);
 
 /**
  * Run one step with the environment already set, and stop the build if it
@@ -76,7 +96,13 @@ const SITE_URLS = {
 function step(command, args) {
   const run = spawnSync(command, args, {
     stdio: 'inherit',
-    env: { ...process.env, PUBLIC_SITE_ENV: env, PUBLIC_SITE_URL: SITE_URLS[env] },
+    env: {
+      ...process.env,
+      PUBLIC_SITE_ENV: env,
+      PUBLIC_SITE_URL: target.siteUrl,
+      AW_CONTACT_ENABLED: contactEnabled ? 'true' : 'false',
+      AW_WRANGLER_CONFIG: wranglerConfig,
+    },
     shell: process.platform === 'win32',
   });
   if (run.status !== 0) {
@@ -95,13 +121,17 @@ const run = (args) =>
     ? step(process.execPath, [...astro, ...args])
     : step('npx', ['--no-install', 'astro', ...args]);
 
-console.log(`${DIM}building ${env} → ${SITE_URLS[env]}${RESET}\n`);
-step(process.execPath, [
-  '--experimental-strip-types',
-  '--test',
-  'scripts/test-turnstile.mjs',
-  'scripts/test-origin.mjs',
-]);
+console.log(`${DIM}building ${env} → ${target.siteUrl} (${target.worker})${RESET}\n`);
+if (contactEnabled) {
+  step(process.execPath, [
+    '--experimental-strip-types',
+    '--test',
+    'scripts/test-turnstile.mjs',
+    'scripts/test-origin.mjs',
+  ]);
+} else {
+  console.log(`${DIM}· contact module disabled; no runtime form tests or Turnstile key required${RESET}`);
+}
 
 if (env === 'production') {
   /* Refuse a production build of a template that has not been designed yet.
@@ -169,4 +199,4 @@ if (env === 'production') {
 /* A sanity line, so the log says which environment actually ran rather than
    which one was asked for. They are the same now; they were not always. */
 const pkg = existsSync('package.json') ? JSON.parse(readFileSync('package.json', 'utf8')) : {};
-console.log(`\n${DIM}${pkg.name ?? 'site'} built as ${env}${RESET}`);
+console.log(`\n${DIM}${pkg.name ?? 'site'} built as ${env} for ${target.worker}${RESET}`);

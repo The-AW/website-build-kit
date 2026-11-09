@@ -1,3 +1,2 @@
-# Copy to .dev.vars for local `wrangler dev`. Never commit the real values.
-TURNSTILE_SECRET_KEY="set-in-local-dev-vars"
-LEADS_EXPORT_TOKEN="a long random string"
+# The static starter has no runtime secrets. Create .dev.vars only for an
+# explicitly enabled site-specific contact module; never commit that file.

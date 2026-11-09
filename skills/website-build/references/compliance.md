@@ -304,13 +304,10 @@ Most of it is not code. What is:
 - **A privacy notice describing what the site genuinely does** — not a template describing
   tracking you did not implement. `stacks.md` §9 makes this point already; it matters more once
   a named regime applies
-- **Retention on the lead store.** KV entries are forever by default. GDPR storage limitation
-  means a TTL or a scheduled purge, and it is a two-line change now versus a data audit later.
-  The template does this through `site.leadRetentionDays` → a KV `expirationTtl`; **keep that
-  number and the published privacy notice in step**, because the published one is the promise
-  you are judged against. This paragraph predates the implementation by months — the
-  requirement was written down here and the template held leads forever anyway, which is worth
-  remembering the next time a reference says "should"
+- **Retention if the site stores enquiries.** A site that enables a form must name the real
+  retention/deletion mechanism and keep it aligned with its privacy notice. The AW static starter
+  has no form or lead store; its in-progress contact draft's KV policy is not an AW default. A
+  private-CRM implementation must document and verify the CRM's own retention behavior.
 - **Keep personal data out of KV metadata.** `list()` returns metadata without reading values,
   so anything there is available through the cheaper call for no benefit
 - ⚠ **THE MESSAGE BOX IS WHERE REGULATED DATA ACTUALLY ARRIVES, AND NOT ASKING IS NOT A CONTROL.**
