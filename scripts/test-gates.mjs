@@ -381,6 +381,19 @@ gate('staging deploy refuses a media inventory without required columns', {
   contains: 'The media inventory must include columns',
 });
 
+gate('staging deploy refuses a redirect rule absent from the manifest', {
+  script: 'deploy-aw.mjs',
+  args: ['staging', '--dry-run'],
+  files: {
+    'aw-migration.json': awManifest(),
+    'recon/urls.txt': '/\n',
+    'recon/media.csv': 'source_url,local_path,status,sha256,alt,usage\nhttps://old-client.org/a.jpg,media/a.jpg,downloaded,0123456789,Photo,hero\n',
+    'public/_redirects': '/old-path/ /new-path/ 301\n',
+  },
+  expect: 1,
+  contains: 'Redirect rule is missing from inventories.redirectExceptions',
+});
+
 gate('production deploy requires an existing rollback snapshot', {
   script: 'deploy-aw.mjs',
   args: ['production', '--dry-run'],
@@ -396,6 +409,7 @@ gate('production deploy requires an existing rollback snapshot', {
     }),
     'recon/urls.txt': '/\n',
     'recon/media.csv': 'source_url,local_path,status,sha256,alt,usage\nhttps://old-client.org/logo.png,media/source/logo.png,downloaded,0123456789abcdef,Logo,header\n',
+    'public/_redirects': '# no redirects selected for this fixture\n',
   },
   expect: 1,
   contains: 'existing rollback snapshot',

@@ -145,16 +145,42 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       }
       if (mediaLines.length < 2) add('The media inventory must include at least one reviewed asset or explicit no-media row.');
     }
+    const redirectPath = typeof inventories.redirects === 'string' ? resolve(cwd, inventories.redirects) : '';
+    const redirectRules = new Set();
+    if (!redirectPath || !existsSync(redirectPath)) {
+      add('Deploy requires the redirect map named in inventories.redirects.');
+    } else {
+      for (const line of readFileSync(redirectPath, 'utf8').split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const [source, destination, status] = trimmed.split(/\s+/);
+        if (!source || !destination || !status) {
+          add(`Invalid redirect rule in ${inventories.redirects}: ${trimmed}`);
+          continue;
+        }
+        redirectRules.add(`${source} ${destination} ${status}`);
+      }
+    }
     if (!Array.isArray(inventories.redirectExceptions)) {
       add('inventories.redirectExceptions must be an array of reviewed exceptions.');
     } else {
+      const exceptionRules = new Set();
+      const allowedStatuses = new Set(['200', '301', '302', '303', '307', '308']);
       inventories.redirectExceptions.forEach((entry, index) => {
         if (!entry || typeof entry.source !== 'string' || !entry.source.trim() ||
             typeof entry.destination !== 'string' || !entry.destination.trim() ||
-            typeof entry.reason !== 'string' || !entry.reason.trim()) {
-          add(`inventories.redirectExceptions[${index}] must include source, destination and reason.`);
+            typeof entry.reason !== 'string' || !entry.reason.trim() ||
+            !allowedStatuses.has(String(entry.status))) {
+          add(`inventories.redirectExceptions[${index}] must include source, destination, supported status and reason.`);
+          return;
         }
+        const rule = `${entry.source} ${entry.destination} ${entry.status}`;
+        exceptionRules.add(rule);
+        if (!redirectRules.has(rule)) add(`Reviewed redirect exception is missing from ${inventories.redirects}: ${rule}`);
       });
+      for (const rule of redirectRules) {
+        if (!exceptionRules.has(rule)) add(`Redirect rule is missing from inventories.redirectExceptions: ${rule}`);
+      }
     }
     if (environment === 'production') {
       const acceptance = manifest?.acceptance?.criteria;

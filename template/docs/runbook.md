@@ -13,7 +13,7 @@ npm run extract
 npm run media
 ```
 
-Review the complete route and media inventories. `recon/media.csv` is the source inventory and must contain `source_url,local_path,status,sha256,alt,usage` plus at least one reviewed asset row (or an explicit no-media row). `npm run media` separately generates `src/data/image-manifest.json` for the site pipeline. Preserve each source path or record its redirect/disposition. Record redirect exceptions as `source,destination,reason`. Do not change DNS or mail records outside the authorized cutover scope.
+Review the complete route and media inventories. `recon/media.csv` is the source inventory and must contain `source_url,local_path,status,sha256,alt,usage` plus at least one reviewed asset row (or an explicit no-media row). `npm run media` separately generates `src/data/image-manifest.json` for the site pipeline. Preserve each source path or record its redirect/disposition. Keep `public/_redirects` empty until rules are reviewed; every shipped rule must match a `redirectExceptions` item with `source,destination,status,reason`. Do not change DNS or mail records outside the authorized cutover scope.
 
 ## 2. Static staging
 
