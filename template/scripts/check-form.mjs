@@ -7,10 +7,10 @@
  * bug, not a note, so it fails in both — a duplicate `name` is never something
  * anyone meant.
  *
- * ── THE FAILURE THIS EXISTS FOR ────────────────────────────────────────────
+ * ── THE LEGACY MODULE EXAMPLE (NOT THE AW /api/leads CONTRACT) ──────────────
  * ⚠ THE HONEYPOT IS CALLED `company`, AND THAT IS THE FIELD A B2B SITE ADDS.
  *
- * `ContactForm.astro` hides a trap field named `company`, and `api/contact.ts`
+ * The isolated KV draft's `ContactForm.astro` hides a trap field named `company`, and `api/contact.ts`
  * discards any submission that fills it in — **silently and with a 200**, so a
  * bot learns nothing:
  *

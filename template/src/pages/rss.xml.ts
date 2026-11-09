@@ -4,6 +4,8 @@ import { getPosts } from '../lib/posts';
 import { business } from '../data/business';
 import { site } from '../data/site';
 
+export const prerender = true;
+
 export const GET: APIRoute = async (context) => {
   // Staging must not publish a feed a reader could subscribe to.
   if (!site.indexable) return new Response('Not found\n', { status: 404 });

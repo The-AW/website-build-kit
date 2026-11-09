@@ -105,7 +105,9 @@ export default defineConfig({
         }),
       }
     : {}),
-  trailingSlash: 'always',
+  // Keep the documented slashless /api/leads POST routable without a 308. Static
+  // HTML remains directory-formatted and Cloudflare handles its slash behavior.
+  trailingSlash: CONTACT_RUNTIME ? 'ignore' : 'always',
   build: { format: 'directory' },
   prefetch: { prefetchAll: true, defaultStrategy: 'hover' },
   integrations: [

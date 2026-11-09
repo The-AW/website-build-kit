@@ -241,9 +241,9 @@ does ship is the skeleton of the parts that take longest to get right:
   audited site had an entire services collection it could not edit) and about fields that look
   like technical configuration rather than content
 - **`npm run check:form`** — two form controls sharing a `name`. **The honeypot is called
-  `company`**, and `api/contact.ts` discards any submission that fills it in — silently, with a 200
-  and a thank-you page. Add a real Company field, as a B2B site eventually does, and every enquiry
-  from a company that types its name is thrown away. Runs before the build, in both environments
+  `company`** in the isolated legacy KV contact draft; that draft is not the AW CRM path. AW's
+  reusable contact contract is opt-in same-origin `POST /api/leads`; its route and CRM adapter are
+  site-specific and not proven end-to-end by the kit. Runs before the build, in both environments
 - **`npm run check:copy`** — the markers you leave for yourself, found in the text a *reader*
   would see: `TODO`, `⚠ CONFIRM:`, `Lorem ipsum`, an unrendered `{{ placeholder }}`. Warns on
   staging, refuses on production. It reads rendered text rather than source, so a `TODO` in a code

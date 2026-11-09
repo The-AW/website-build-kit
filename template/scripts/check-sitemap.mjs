@@ -35,15 +35,16 @@ if (!['staging', 'production'].includes(environment)) {
   process.exit(1);
 }
 
-let expectedSiteUrl = process.env.PUBLIC_SITE_URL?.trim();
-if (!expectedSiteUrl && existsSync('aw-migration.json')) {
+let migrationManifest;
+if (existsSync('aw-migration.json')) {
   try {
-    const manifest = JSON.parse(readFileSync('aw-migration.json', 'utf8'));
-    expectedSiteUrl = manifest.hosts?.[environment];
+    migrationManifest = JSON.parse(readFileSync('aw-migration.json', 'utf8'));
   } catch {
-    add('aw-migration.json is not valid JSON while resolving the expected canonical host.');
+    add('aw-migration.json is not valid JSON while checking output mode and canonical host.');
   }
 }
+let expectedSiteUrl = process.env.PUBLIC_SITE_URL?.trim() || migrationManifest?.hosts?.[environment];
+const contactRuntime = migrationManifest?.forms?.choice === 'private_crm';
 let expectedOrigin = '';
 try {
   expectedOrigin = new URL(expectedSiteUrl).origin;
@@ -77,8 +78,35 @@ const routeFor = (file) =>
   ('/' + relative(root, file).split(sep).join('/')
     .replace(/index\.html$/, '')
     .replace(/\.html$/, '/'))
-    .replace(/\/{2,}/g, '/')
+    .replace(/\/+/g, '/')
     .replace(/([^/])$/, '$1/');
+
+if (contactRuntime) {
+  const pagesRoot = 'src/pages';
+  if (!existsSync(pagesRoot)) {
+    add('forms.choice private_crm requires src/pages so static routes can be verified.');
+  } else {
+    const routeFiles = walk(pagesRoot).filter((file) => /\.(?:astro|md|mdx|js|ts)$/.test(file));
+    const apiFiles = routeFiles.filter((file) => relative(pagesRoot, file).split(sep).join('/').startsWith('api/'));
+    if (!apiFiles.length) add('forms.choice private_crm requires an on-demand API route under src/pages/api/.');
+    for (const file of routeFiles) {
+      const source = readFileSync(file, 'utf8');
+      const route = relative(pagesRoot, file).split(sep).join('/');
+      const isApi = route.startsWith('api/');
+      const declaration = isApi
+        ? /^[ \t]*export\s+const\s+prerender\s*=\s*false\b/m
+        : /^[ \t]*export\s+const\s+prerender\s*=\s*true\b/m;
+      if (!declaration.test(source)) {
+        add(isApi
+          ? `${route} must explicitly export prerender = false so its API is served by the Worker.`
+          : `${route} must explicitly export prerender = true; only API routes may remain on-demand.`);
+      }
+    }
+  }
+  if (!existsSync(join(root, '404.html'))) {
+    add(`Hybrid contact mode must include ${root}/404.html as a prerendered asset for Cloudflare's real 404 handling.`);
+  }
+}
 
 if (!htmlFiles.length) add(`No HTML pages were built under ${root}/.`);
 for (const file of htmlFiles) {

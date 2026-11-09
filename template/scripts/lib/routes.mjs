@@ -113,7 +113,7 @@ export async function discoverRoutes(origin, fetcher = fetch) {
  *   on a site with a `[slug]` catch-all is *most of the site* — a check that
  *   confident and that wrong gets switched off within a day.
  *
- * ⚠ ENDPOINTS ARE NOT PAGES. `robots.txt.ts` and `api/contact.ts` produce
+ * ⚠ ENDPOINTS ARE NOT PAGES. `robots.txt.ts` and `api/leads.ts` produce
  *   responses, never navigable pages, so they are excluded — nobody puts them
  *   in a menu and reporting them as available would be noise.
  */

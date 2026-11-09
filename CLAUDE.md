@@ -80,7 +80,7 @@ starter.
 cd template && rm -rf node_modules dist .astro && npm install && CI=true npm run build:staging
 PUBLIC_SITE_ENV=staging npm run check             # 0 errors
 npm run tells                                     # "fresh template", tells under three
-npm run check:sitemap                             # no-op on staging, must still exit 0
+npm run check:sitemap                             # staging noindex/no-sitemap/canonical checks; must pass
 ```
 
 Must build green with **no content, no images and no secrets**. That is the promise; a

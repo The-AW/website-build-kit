@@ -1,6 +1,8 @@
 import type { APIRoute } from 'astro';
 import { site } from '../data/site';
 
+export const prerender = true;
+
 /**
  * Generated, not a static file — so staging is disallow-all without anyone
  * having to remember to swap a file at go-live.

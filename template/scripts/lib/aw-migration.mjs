@@ -90,14 +90,14 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
   const choice = manifest?.forms?.choice;
   if (!['none', 'private_crm'].includes(choice)) add('forms.choice must be "none" or "private_crm".');
   if (choice === 'private_crm') {
-    const contactRoute = join(cwd, 'src/pages/api/contact.ts');
+    const leadsRoute = join(cwd, 'src/pages/api/leads.ts');
     const crmAdapter = manifest?.forms?.crmAdapter;
     const adapterPath = typeof crmAdapter === 'string' && crmAdapter.trim()
       ? resolve(cwd, crmAdapter)
       : '';
-    if (!existsSync(contactRoute)) add('forms.choice is private_crm but src/pages/api/contact.ts is missing.');
-    else if (!/submitToExistingCrm\s*\(/.test(readFileSync(contactRoute, 'utf8'))) {
-      add('The contact route is still the KV-only draft; it must call the site adapter for AW\'s existing private CRM.');
+    if (!existsSync(leadsRoute)) add('forms.choice is private_crm but src/pages/api/leads.ts is missing.');
+    else if (!/submitToExistingCrm\s*\(/.test(readFileSync(leadsRoute, 'utf8'))) {
+      add('The /api/leads route must call the site adapter for AW\'s existing private CRM; the isolated KV-only draft is not valid.');
     }
     if (!adapterPath || !existsSync(adapterPath)) add('forms.choice is private_crm but forms.crmAdapter does not point to the site-specific existing CRM adapter.');
     else if (/NOT_IMPLEMENTED|IMPLEMENT_EXISTING_PRIVATE_CRM/i.test(readFileSync(adapterPath, 'utf8'))) {
@@ -217,9 +217,19 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       zoneId: cloudflareTarget.zoneId ?? '',
       environment,
       phase,
+      runtimeEnabled: choice === 'private_crm',
     };
   }
-  return { ok: false, errors, siteUrl: null, hostname: null, worker: worker ?? null, environment, phase };
+  return {
+    ok: false,
+    errors,
+    siteUrl: null,
+    hostname: null,
+    worker: worker ?? null,
+    environment,
+    phase,
+    runtimeEnabled: choice === 'private_crm',
+  };
 }
 
 export function createWranglerConfig(manifest, environment, cwd = process.cwd()) {
@@ -236,9 +246,11 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
     compatibility_date: COMPATIBILITY_DATE,
     assets: {
       directory: assetsDirectory,
-      ...(runtimeEnabled ? { binding: 'ASSETS' } : {}),
-      not_found_handling: runtimeEnabled ? 'none' : '404-page',
-      html_handling: 'auto-trailing-slash'
+      ...(runtimeEnabled
+        ? { binding: 'ASSETS', run_worker_first: ['/api/*'] }
+        : {}),
+      not_found_handling: '404-page',
+      html_handling: 'auto-trailing-slash',
     },
     observability: { enabled: true },
     routes: [{ pattern: result.hostname, custom_domain: true }]
@@ -248,7 +260,7 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
   return config;
 }
 
-export function validateWranglerDeployConfig(config, target) {
+export function validateWranglerDeployConfig(config, target, { requireWorkerEntrypoint = false } = {}) {
   const errors = [];
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     return ['selected Worker config must be a JSON object.'];
@@ -268,6 +280,22 @@ export function validateWranglerDeployConfig(config, target) {
   }
   if (config.preview_urls !== false) {
     errors.push('preview_urls must be false so the Worker is not exposed on an alternate preview hostname.');
+  }
+  if (target.runtimeEnabled) {
+    const assets = config.assets ?? {};
+    const workerFirst = assets.run_worker_first;
+    if (assets.binding !== 'ASSETS') {
+      errors.push('assets.binding must be ASSETS for the Astro Worker to serve its prerendered pages.');
+    }
+    if (!Array.isArray(workerFirst) || workerFirst.length !== 1 || workerFirst[0] !== '/api/*') {
+      errors.push('assets.run_worker_first must be exactly ["/api/*"] so only on-demand API routes reach Astro first.');
+    }
+    if (assets.not_found_handling !== '404-page') {
+      errors.push('assets.not_found_handling must be 404-page to preserve a real static 404 response.');
+    }
+    if (requireWorkerEntrypoint && (typeof config.main !== 'string' || !config.main.trim())) {
+      errors.push('selected server deploy config must include the Astro Worker main entrypoint.');
+    }
   }
   return errors;
 }

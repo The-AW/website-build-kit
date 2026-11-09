@@ -98,10 +98,14 @@ path. This is what keeps `width`/`height` on every image so nothing shifts.
 **The static default has no contact form runtime, KV archive or Turnstile requirement.** The
 retained `modules/contact/` code is an implementation draft that archives to KV; it is not AW's
 existing-private-CRM path and has not been proven end-to-end. Do not copy/enable it unchanged.
-If a site selects forms, implement a same-origin API + Turnstile Siteverify + site-specific adapter
-to AW's existing private CRM; no email/Slack/Brevo notification provider is mandatory. The build
-refuses `forms.choice: "private_crm"` until the CRM route and adapter exist and the route calls
-`submitToExistingCrm()`.
+If a site selects forms, implement same-origin `POST /api/leads` + Turnstile Siteverify + a
+site-specific adapter to AW's existing private CRM; no email/Slack/Brevo notification provider is
+mandatory. Astro switches to server output, but every non-API route must explicitly export
+`prerender = true` and API routes `prerender = false`. Cloudflare serves static assets first and
+runs only `/api/*` Worker-first; keep `not_found_handling: "404-page"`. The build refuses
+`forms.choice: "private_crm"` until `src/pages/api/leads.ts` and the adapter exist and the route
+calls `submitToExistingCrm()`. The local synthetic adapter test proves routing only, not hosted
+CRM or browser end-to-end behavior.
 
 **Content pages work without JavaScript.** Keep interactive page content visible when bundles fail;
 the static contact-details page remains usable without an optional form module.
@@ -135,11 +139,10 @@ a no-op without one. Do not add a CMS by default. Redirects remain developer-con
 images in the generated output produces files with no variants, no width/height and no manifest
 entry, so `<Img>` throws. Keep editable source assets and generated media output separate.
 
-⚠ **THE HONEYPOT IS CALLED `company`.** `api/contact.ts` discards any submission that fills it in,
-silently and with a 200, so a bot learns nothing. Add a real "Company" field to that form — an
-ordinary client request — and every enquiry from a company that types its name is thrown away, with
-a thank-you page and nothing stored. **Name the real field `companyName`** and leave the trap alone;
-`npm run check:form` fails the build if two controls share a name.
+⚠ **LEGACY KV DRAFT ONLY:** the isolated `modules/contact/` form uses a `company` honeypot and
+`api/contact.ts` discards any submission that fills it in, silently and with a 200. This is not the
+reusable AW `/api/leads` contract; do not copy the draft unchanged. For that legacy form, add a real
+"Company" field only as `companyName`; `npm run check:form` fails on duplicate control names.
 
 **Alt text is read as text.** `npm run check:alt` reads `dist/` and reports an alt that exists and
 says nothing — a filename, a manifest key, `image`, `Photo of a…`, or one description shared by two

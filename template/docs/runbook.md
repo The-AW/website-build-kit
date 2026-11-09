@@ -35,7 +35,9 @@ A configured `CLOUDFLARE_API_TOKEN` provided through BYOK is valid auth when `wr
 
 **Minimum blockers:** every inventoried old URL resolves or has a reviewed redirect/disposition; the production build targets the verified production host and separate Worker; production canonicals, robots and sitemap are correct; unknown paths return a real 404; staging stays noindex; acceptance criteria are recorded; a rollback snapshot exists and restores to the preserved WordPress origin.
 
-A static site with `forms.choice: "none"` needs no form, CRM, Turnstile or notification transport. Optional modules are not launch blockers. The contact code under `modules/contact/` is still a KV-only draft, not the existing-private-CRM integration, and is not proven end-to-end. If a site selects `private_crm`, implement same-origin API + Turnstile Siteverify + that site's adapter to AW's existing private CRM, then test privacy, retention, limits, failures and recovery with approved staging data before claiming completion. No email/Slack/Brevo provider is mandatory.
+`forms.choice: "none"` needs no form, CRM, Turnstile or notification transport. If `private_crm` is selected, the adapter uses Astro server output while ordinary pages/endpoints explicitly prerender and only API routes remain on-demand; Workers Static Assets runs `/api/*` Worker-first and preserves the real static 404. The agreed endpoint is same-origin `POST /api/leads` + Turnstile Siteverify + that site's adapter to AW's existing private CRM. Build gates retain sitemap, robots, canonical and noindex checks.
+
+The code under `modules/contact/` remains a KV-only draft, not the existing-private-CRM integration, and is not proven end-to-end. A synthetic local adapter test verifies the hybrid route mechanics only; it does not prove hosted CRM delivery or real-browser form success. Before claiming contact completion, test the implemented adapter, privacy/retention, limits, failures and recovery with approved staging evidence. No email/Slack/Brevo provider is mandatory.
 
 ```bash
 npm run build:production

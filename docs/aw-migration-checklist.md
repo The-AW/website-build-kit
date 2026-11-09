@@ -19,8 +19,9 @@ Use one copy per client in that site's repository, not in this public kit. See [
 - [ ] Map every source URL to a page, reviewed redirect/status, or explicit disposition; no catch-all to the homepage. Record redirect exceptions and test for loops and duplicate sources.
 - [ ] Confirm the project is content-first and static-compatible; put dynamic routes only in explicitly enabled modules.
 - [ ] Static is the default: no runtime adapter, form endpoint, Turnstile key, KV binding, or notification service. Optional modules do not block static migration.
-- [ ] Set `forms.choice` explicitly to `none` or `private_crm`. If enabled, the AW design is same-origin API + Turnstile Siteverify + a site-specific adapter to AW's existing private CRM. No email/Slack/Brevo notification transport is mandatory.
+- [ ] Set `forms.choice` explicitly to `none` or `private_crm`. If enabled, use same-origin `POST /api/leads` + Turnstile Siteverify + a site-specific adapter to AW's existing private CRM; ordinary pages remain prerendered and only API routes are on-demand. No email/Slack/Brevo notification transport is mandatory.
 - [ ] The retained contact code is still a KV-only implementation draft, not the CRM integration and not proven end-to-end. Do not enable or claim it works unchanged; require an implemented adapter, request limits, recovery/privacy behavior and staging tests first.
+- [ ] For `private_crm`, verify API Worker-first routing, static page prerendering, staging noindex, production sitemap/robots/canonicals and a real static 404. A synthetic local adapter proves routing only, not hosted CRM delivery or browser form success.
 - [ ] Reconcile redirects, sitemap paths, robots directives, feeds, verification files, `ads.txt`, `.well-known`, title/description/canonical/language/schema and indexability.
 
 ## Minimum launch — blocking

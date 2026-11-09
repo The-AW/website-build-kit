@@ -7,7 +7,8 @@ The first section ships with the template and describes traps in *this* code. **
 yours to fill in during the build** — it is the highest-value page in the repo six months later.
 
 The runtime/form traps below apply only to an explicitly enabled contact module. The AW static
-default has no `/api/contact/` route, Astro Worker adapter or KV binding.
+default has no contact API, Astro Worker adapter or KV binding. The old isolated KV draft uses
+`/api/contact/`; the reusable AW route contract is slashless `POST /api/leads`.
 
 ---
 
@@ -43,11 +44,12 @@ element every navigation and the old handler keeps mutating the previous page's 
 
 ### `trailingSlash: 'always'` breaks form POSTs
 
-`POST /api/contact` 308-redirects to `/api/contact/` and the redirected request loses its body
-on the Workers runtime. The endpoint looks broken while being fine.
+With Astro's on-demand rendering, `trailingSlash: 'always'` may 308-redirect a slashless POST to
+the slash route, and the redirected request can lose its body on the Workers runtime. The agreed
+AW endpoint is slashless `POST /api/leads`.
 
-*Fix:* the form posts to `/api/contact/`, slash included. That slash in `ContactForm.astro`'s
-`action` is load-bearing.
+*Fix:* hybrid contact builds use `trailingSlash: 'ignore'` for API route matching; ordinary static
+pages still use directory output and Cloudflare's HTML handling for their canonical slash form.
 
 ### Astro's CSRF protection rejects `Origin`-less POSTs with 403
 
