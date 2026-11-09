@@ -25,7 +25,15 @@
   },
   "forms": {
     "choice": "none",
-    "crmAdapter": ""
+    "crmAdapter": "",
+    "crmEndpoints": {
+      "staging": "",
+      "production": ""
+    },
+    "turnstileSiteKeys": {
+      "staging": "",
+      "production": ""
+    }
   },
   "acceptance": {
     "criteria": [],
