@@ -61,6 +61,9 @@ static-first WordPress path, environment-specific deploy commands and rollback b
 **→ [docs/aw-migration-checklist.md](docs/aw-migration-checklist.md)** — the source inventory and
 minimum launch gate to copy into each site's own repository.
 
+**→ [docs/content-editing.md](docs/content-editing.md)** — a reusable file-based editing process for
+every migrated site, with adoption guidance for repositories that were already scaffolded.
+
 ## What's in it
 
 | | |
@@ -76,6 +79,7 @@ minimum launch gate to copy into each site's own repository.
 | `create/` | Upstream npm scaffolder/package; not the AW fork path. AW uses `scripts/scaffold-aw.mjs` |
 | `CLAUDE.md` | Applies when working **on the kit** — house style, where things go |
 | `template/CLAUDE.md` | Ships with each new site — that site's conventions |
+| `template/AGENTS.md` | Short agent entry point that links to the existing `CLAUDE.md` |
 
 ## The references
 
@@ -258,6 +262,11 @@ does ship is the skeleton of the parts that take longest to get right:
 - **Legal pages as content** — `src/content/legal/*.md` served through one route, with the
   footer links derived from the collection itself. A footer link to a page nobody has written
   yet is a 404 on every page of the site, and nothing reports it
+- **File-based content editing** — `docs/content-editing.md` and `docs/new-page-brief.md` explain
+  how to add a page without a CMS, require reviewed nonblank metadata, preserve the real route and
+  site schema, and keep generated assets out of source. `npm run test:content` temporarily builds
+  a synthetic article and proves metadata refusals, canonical/schema output, local image/link
+  resolution, staging noindex and production sitemap inclusion; its fixture is removed afterward
 - **`npm run console`** — console errors and failed requests on the deployed site, in a real
   browser. `verify` uses only `fetch` and so can never see this: the page returns 200, the HTML
   is correct, and something inside it failed after the response was complete. A blocked

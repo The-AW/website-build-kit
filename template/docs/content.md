@@ -28,7 +28,7 @@ add the file and the link appears; delete it and the link goes. There is no list
 step, which is the point: a footer link to a page nobody wrote yet is a 404 on *every* page of
 the site and nothing reports it.
 
-Each one needs `title`, `description` and `effective` (the date the terms took effect, as
+Each one needs a nonblank `title`, `description` and `effective` (the date the terms took effect, as
 `YYYY-MM-DD`). Add `updated` only when it has genuinely changed, `navLabel` when the title is
 too long for a footer, and `order` to move it in the row. Changing an effective date is editing
 one line of frontmatter — no developer.
@@ -37,16 +37,23 @@ one line of frontmatter — no developer.
 
 ## Writing a post
 
-Create `src/content/blog/my-post.md`. The filename is the URL.
+Create `src/content/blog/my-post.md`. The filename is the root-level URL slug (`/my-post/`);
+published posts render through `src/pages/[slug].astro` and appear in the RSS feed. Draft posts
+are excluded from both. The route fails the build if a slug collides with a legal page or static route.
 
 ```markdown
 ---
 title: 'What a pre-purchase survey actually covers'
-description: 'One sentence that would make sense as a search result. ~155 characters.'
-pubDate: 2026-08-02
-category: 'Tips'
+seoTitle: 'What a pre-purchase survey covers | Example Business' # required <title>; length guidance is advisory
+description: 'One sentence that accurately describes this article and its value to a reader.'
+publishedAt: 2026-08-02 # a calendar date, kept stable across time zones
+categories: ['Tips']
 image: 'blog/example-post'          # a manifest key, never a URL or a path
 imageAlt: 'A surveyor recording a reading'
+author:
+  name: 'OWNER INPUT: verified author name'
+  type: 'Person'                    # optional; Person is the default
+  url: '/about/author/'             # optional, real root-relative profile or HTTPS URL
 draft: false
 ---
 
@@ -58,13 +65,16 @@ Never skip a level to get a size — heading level is structure, size is a token
 it "looked right" breaks the document outline for anyone using a screen reader.
 ```
 
-**The frontmatter is typed and validated at build time** (`src/content.config.ts`). A missing
-`title`, a malformed date or a category that does not exist in `categories.ts` fails the build
-with the file and field named. That is the system working.
+**The frontmatter is typed and validated at build time** (`src/content.config.ts`). Missing or blank
+H1, SEO title or description, malformed dates, an unknown category, a missing manifest image key,
+missing image alt, or an update date earlier than publication fails the build with the file and
+field named. Length guidance for title and description is advisory; there is no hard Google character limit.
 
 - `draft: true` keeps it out of production entirely
-- `category` must match a `name` in `categories.ts` exactly
+- every `categories` value must match a `name` in `categories.ts` exactly
 - `image` is a manifest key — see below
+- `author` is optional; include only a real, owner-approved visible author
+- `updatedAt` is optional; omit until the article has actually been updated
 
 ---
 
@@ -123,15 +133,27 @@ The build cannot check these. They are the ones that matter and the ones that sl
 
 ## Publishing
 
+Use [the content-editing process](content-editing.md) and [new-page brief](new-page-brief.md).
+Do not push a content change directly to a tracked deployment branch.
+
 ```bash
-git add . && git commit -m "Add post: what a pre-purchase survey covers"
-git push
+npm run check
+npm run check:copy
+npm run check:alt
+npm run check:sitemap
+npm run build:staging
+npm run deploy:staging:dry-run
 ```
 
-Deployment is a push to the tracked branch. To preview first:
+Open a focused PR with the changed source, route, image provenance, exact checks, and any redirect
+or navigation impact. Inspect the built article's title/description, self-canonical, Article JSON-LD,
+author, image/alt and route. The site's authorized release owner handles publication after review;
+the dry-run does not publish. To inspect a local staging build first:
 
 ```bash
-npm run build:staging && npx wrangler dev     # localhost:8788
+npm run build:staging
+npm run preview -- --port 8788                 # terminal 1; serves dist locally only
+npm run verify -- http://localhost:8788         # terminal 2; routes, internal links and local assets
 ```
 
 If the build fails, **read the error** — it names the file and the field. It has caught a real

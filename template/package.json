@@ -28,6 +28,7 @@
     "test:turnstile": "node --experimental-strip-types --test scripts/test-turnstile.mjs",
     "test:origin": "node --experimental-strip-types --test scripts/test-origin.mjs",
     "test:form": "node --experimental-strip-types --test scripts/test-turnstile.mjs scripts/test-origin.mjs",
+    "test:content": "node --experimental-strip-types --test scripts/test-content-editing.mjs",
     "console": "node scripts/check-console.mjs",
     "deploy:production": "node scripts/deploy-aw.mjs production",
     "deploy:production:dry-run": "node scripts/deploy-aw.mjs production --dry-run",

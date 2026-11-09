@@ -18,7 +18,10 @@ skills/website-build/references/      the detail, loaded only when needed
   traps.md      silent failures, with symptom and fix
 commands/       slash-command entry point
 template/       Astro + Cloudflare starter — must build green from a clean clone
+  AGENTS.md     concise entry point linking to the existing template/CLAUDE.md
+  docs/         starter-specific content editing and new-page brief
 docs/           for humans using or extending the kit
+  content-editing.md reusable file-based editing standard and copied-kit adoption
 ```
 
 `SKILL.md` stays short. Detail goes in a reference — the point of the split is that the
@@ -77,14 +80,20 @@ starter.
 ## After changing the template
 
 ```bash
-cd template && rm -rf node_modules dist .astro && npm install && CI=true npm run build:staging
+cd template && rm -rf node_modules dist .astro && npm ci
+npm run test:content                              # temporary article/refusal/build fixture; self-cleaning
+env CI=true PUBLIC_SITE_ENV=staging PUBLIC_SITE_URL=https://staging.content-workflow.invalid npm run build
+node scripts/staging-headers.mjs
 PUBLIC_SITE_ENV=staging npm run check             # 0 errors
 npm run tells                                     # "fresh template", tells under three
-npm run check:sitemap                             # staging noindex/no-sitemap/canonical checks; must pass
+env PUBLIC_SITE_ENV=staging PUBLIC_SITE_URL=https://staging.content-workflow.invalid npm run check:sitemap
+npm run check:copy && npm run check:alt
 ```
 
-Must build green with **no content, no images and no secrets**. That is the promise; a
-starter that needs setup before it compiles is not a starter.
+Must build green with **no content, no images and no secrets**. Use a reserved `.invalid` origin
+for the source-only build above: the untouched `aw-migration.json` deliberately refuses
+`npm run build:staging` until a site's real host, repository and Worker targets have been supplied.
+Never point CI at an arbitrary public hostname or bypass the migration guard for a deploy.
 
 `npm run tells` on a clean clone must report **"fresh template"** — all placeholders present,
 none cleared. A half-cleared state means something ships a design decision it should not.
@@ -454,3 +463,7 @@ Capture DNS/mail records read-only and do not change mail flow unless that chang
 
 Use [`docs/aw-migration-process.md`](docs/aw-migration-process.md) for the reusable method and
 [`docs/aw-migration-checklist.md`](docs/aw-migration-checklist.md) for each site's copy.
+Use [`docs/content-editing.md`](docs/content-editing.md) as the shared no-CMS standard, then adapt
+it to each repository's actual route/content source format; the Markdown starter is not a mandate
+for migrated JSON archives. The template's short `AGENTS.md` points to its existing durable
+`CLAUDE.md` rather than replacing it.

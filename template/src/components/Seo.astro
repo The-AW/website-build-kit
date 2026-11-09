@@ -8,6 +8,8 @@
 import { site, isProduction } from '../data/site';
 import { business } from '../data/business';
 import manifest from '../data/image-manifest.json';
+import { toOpenGraphLocale } from '../lib/seo-locale';
+import { hasConfiguredText } from '../lib/structured-data';
 
 type ManifestEntry = { src: string; width: number; height: number };
 const images = manifest as Record<string, ManifestEntry>;
@@ -39,8 +41,8 @@ function socialCard(src: string | undefined): ManifestEntry | null {
     const direct = Object.values(images).find((entry) => entry.src === src);
     return direct ?? fallback;
   }
-  const name = /\/img\/[^/]+\/(.+?)(?:-\d+)?\.webp$/.exec(src)?.[1];
-  return (name && images[`social/${name}`]) || fallback;
+  const key = /\/img\/(.+?)(?:-\d+)?\.webp$/.exec(src)?.[1] ?? src;
+  return images[`social/${key}`] || fallback;
 }
 
 interface Props {
@@ -61,7 +63,7 @@ const {
   description,
   canonical,
   image,
-  imageAlt = business.name,
+  imageAlt,
   type = 'website',
   publishedAt,
   updatedAt,
@@ -71,6 +73,8 @@ const {
 const canonicalUrl = new URL(canonical ?? Astro.url.pathname, Astro.site).href;
 const card = socialCard(image);
 const imageUrl = card ? new URL(card.src, Astro.site).href : null;
+const ogLocale = toOpenGraphLocale(business.locale);
+const resolvedImageAlt = imageAlt?.trim() || (hasConfiguredText(business.name) ? business.name : null);
 
 // Staging is never indexable, whatever the page asks for. This is derived from
 // the build variable, so there is no switch anyone can forget at go-live.
@@ -86,8 +90,8 @@ const robots = blockIndexing
 <link rel="canonical" href={canonicalUrl} />
 
 <meta property="og:type" content={type} />
-<meta property="og:locale" content="en_US" />
-<meta property="og:site_name" content={business.name} />
+{ogLocale && <meta property="og:locale" content={ogLocale} />}
+{hasConfiguredText(business.name) && <meta property="og:site_name" content={business.name} />}
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
 <meta property="og:url" content={canonicalUrl} />
@@ -97,7 +101,7 @@ const robots = blockIndexing
       <meta property="og:image" content={imageUrl} />
       <meta property="og:image:width" content={String(card.width)} />
       <meta property="og:image:height" content={String(card.height)} />
-      <meta property="og:image:alt" content={imageAlt} />
+      {resolvedImageAlt && <meta property="og:image:alt" content={resolvedImageAlt} />}
     </>
   )
 }

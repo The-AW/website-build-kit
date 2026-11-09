@@ -1,11 +1,16 @@
 ---
 /**
- * JSON-LD, built from src/data/business.ts — the same file the visible header,
- * footer and contact page read from. The schema physically cannot claim a
- * phone number or an address the page does not show.
+ * JSON-LD from the same typed facts used by the visible site. Optional or
+ * unverified facts are omitted; selecting a LocalBusiness subtype requires a
+ * complete public address. BlogPosting is emitted only for a real article page.
  */
 import { business, addressOneLine } from '../data/business';
 import { services } from '../data/services';
+import manifest from '../data/image-manifest.json';
+import { hasCompletePostalAddress, hasConfiguredText, isValidCoordinates, isValidEmail, isValidHttpsUrl, isValidPhone } from '../lib/structured-data';
+
+type ManifestEntry = { src: string; width: number; height: number };
+const images = manifest as Record<string, ManifestEntry>;
 
 interface Props {
   type?: 'home' | 'page' | 'article' | 'blog';
@@ -14,138 +19,240 @@ interface Props {
     headline: string;
     description: string;
     image?: string;
+    imageAlt?: string;
     publishedAt: Date;
     updatedAt?: Date;
     url: string;
+    author?: { name: string; type?: 'Person' | 'Organization'; url?: string };
   };
   faq?: { question: string; answer: string }[];
 }
 
 const { type = 'page', breadcrumbs, article, faq } = Astro.props;
-
 const siteUrl = Astro.site!.origin;
-const abs = (p: string) => new URL(p, Astro.site).href;
-
+const abs = (path: string) => new URL(path, Astro.site).href;
+const pageUrl = abs(Astro.url.pathname);
+const pageId = `${pageUrl}#webpage`;
 const organizationId = `${siteUrl}/#organization`;
 const websiteId = `${siteUrl}/#website`;
+const organizationName = hasConfiguredText(business.name) ? business.name.trim() : null;
+const websiteDescription = hasConfiguredText(business.description) ? business.description.trim() : null;
+const addressReady = hasCompletePostalAddress(business.address);
+const requestedTypes = Array.isArray(business.schemaTypes) && business.schemaTypes.length
+  ? Array.from(new Set(['Organization', ...business.schemaTypes]))
+  : ['Organization'];
+const localSubtypeRequested = requestedTypes.some((schemaType) => schemaType !== 'Organization');
+if (localSubtypeRequested && (!organizationName || !addressReady)) {
+  throw new Error('A LocalBusiness subtype requires a configured organization name and complete public address.');
+}
+if (business.foundedYear !== null && (!Number.isInteger(business.foundedYear) || business.foundedYear < 1800 || business.foundedYear > new Date().getFullYear())) {
+  throw new Error('business.foundedYear must be a verified year between 1800 and the current year, or null.');
+}
 
-const organization = {
-  /* From business.ts — never hardcoded here. A subtype left in the shared
-     layer becomes every future site's industry. See the note on schemaTypes. */
-  '@type': business.schemaTypes,
-  '@id': organizationId,
-  name: business.name,
-  legalName: business.legalName,
-  url: siteUrl,
-  description: business.description,
-  foundingDate: String(business.foundedYear),
-  telephone: business.phone.e164,
-  email: business.email.display,
-  priceRange: business.priceRange,
-  /* Omitted rather than pointed at a file that may not exist — a schema logo
-     returning 404 is a Search Console warning nothing in a build would show. */
-  ...(business.logoPath ? { logo: { '@type': 'ImageObject', url: abs(business.logoPath) } } : {}),
-  image: abs('/img/social/og-default.jpg'),
-  address: {
-    '@type': 'PostalAddress',
-    streetAddress: business.address.street,
-    addressLocality: business.address.locality,
-    addressRegion: business.address.region,
-    postalCode: business.address.postalCode,
-    addressCountry: business.address.country,
-  },
-  geo: {
-    '@type': 'GeoCoordinates',
-    latitude: business.geo.latitude,
-    longitude: business.geo.longitude,
-  },
-  hasMap: business.address.mapUrl,
-  openingHoursSpecification: [
-    {
+const telephoneConfigured = isValidPhone(business.phone.e164);
+if (hasConfiguredText(business.phone.e164) && !telephoneConfigured) {
+  throw new Error('business.phone.e164 must be a verified E.164 number or omitted from schema.');
+}
+const emailConfigured = isValidEmail(business.email.display);
+if (hasConfiguredText(business.email.display) && !emailConfigured) {
+  throw new Error('business.email.display must be a valid public email address or omitted from schema.');
+}
+
+const address = addressReady
+  ? {
+      '@type': 'PostalAddress',
+      streetAddress: business.address.street,
+      addressLocality: business.address.locality,
+      addressRegion: business.address.region,
+      postalCode: business.address.postalCode,
+      addressCountry: business.address.country,
+    }
+  : null;
+const latitude = business.geo.latitude;
+const longitude = business.geo.longitude;
+if ((latitude !== null || longitude !== null) && !isValidCoordinates(latitude, longitude)) {
+  throw new Error('business.geo must contain a verified latitude/longitude pair within valid ranges.');
+}
+const coordinates = isValidCoordinates(latitude, longitude)
+  ? { '@type': 'GeoCoordinates', latitude, longitude }
+  : null;
+
+const hoursConfigured = business.hours.days.length > 0 || Boolean(business.hours.opens || business.hours.closes);
+const validWeekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+if (hoursConfigured && (
+  !business.hours.days.length ||
+  business.hours.days.some((day) => !validWeekdays.includes(day)) ||
+  !validTime(business.hours.opens) ||
+  !validTime(business.hours.closes)
+)) {
+  throw new Error('business.hours requires real weekdays and valid 24-hour opening/closing times.');
+}
+const openingHoursSpecification = hoursConfigured
+  ? [{
       '@type': 'OpeningHoursSpecification',
-      dayOfWeek: business.hours.days.map((d) => `https://schema.org/${d}`),
+      dayOfWeek: business.hours.days.map((day) => `https://schema.org/${day}`),
       opens: business.hours.opens,
       closes: business.hours.closes,
-    },
-  ],
-  areaServed: business.serviceAreas.map((area) => ({
-    '@type': 'City',
-    name: area,
-    containedInPlace: { '@type': 'State', name: business.address.regionName },
-  })),
-  hasOfferCatalog: {
-    '@type': 'OfferCatalog',
-    name: `${business.name} services`,
-    itemListElement: services.map((s) => ({
-      '@type': 'Offer',
-      itemOffered: { '@type': 'Service', name: s.title, description: s.short },
-    })),
-  },
-  ...(business.socials.length ? { sameAs: business.socials.map((s) => s.url) } : {}),
-};
+    }]
+  : null;
 
-const website = {
+const serviceAreas = business.serviceAreas.filter(hasConfiguredText);
+const socialUrls = business.socials.map((social) => social.url);
+if (socialUrls.some((url) => !isValidHttpsUrl(url))) {
+  throw new Error('Every business.socials URL must be a real HTTPS profile URL.');
+}
+const socialSameAs = socialUrls.length ? socialUrls : null;
+const defaultSocialCard = images['social/og-default'];
+const logoEntry = business.logoPath
+  ? images[business.logoPath] ?? Object.values(images).find((entry) => entry.src === business.logoPath)
+  : undefined;
+if (business.logoPath && !logoEntry) {
+  throw new Error('business.logoPath must resolve to a generated image-manifest entry; missing logos are omitted.');
+}
+if (business.schemaOfferCatalog && (!services.length || services.some((service) => !hasConfiguredText(service.title) || !hasConfiguredText(service.short)))) {
+  throw new Error('business.schemaOfferCatalog requires a nonempty, owner-verified service catalog.');
+}
+
+const organization = organizationName
+  ? {
+      '@type': requestedTypes,
+      '@id': organizationId,
+      name: organizationName,
+      url: siteUrl,
+      ...(hasConfiguredText(business.legalName) ? { legalName: business.legalName.trim() } : {}),
+      ...(websiteDescription ? { description: websiteDescription } : {}),
+      ...(typeof business.foundedYear === 'number' && Number.isInteger(business.foundedYear) && business.foundedYear >= 1800 && business.foundedYear <= new Date().getFullYear()
+        ? { foundingDate: String(business.foundedYear) }
+        : {}),
+      ...(telephoneConfigured ? { telephone: business.phone.e164 } : {}),
+      ...(emailConfigured ? { email: business.email.display } : {}),
+      ...(hasConfiguredText(business.priceRange) ? { priceRange: business.priceRange.trim() } : {}),
+      ...(logoEntry ? { logo: { '@type': 'ImageObject', url: abs(logoEntry.src), width: logoEntry.width, height: logoEntry.height } } : {}),
+      ...(defaultSocialCard ? { image: { '@type': 'ImageObject', url: abs(defaultSocialCard.src), width: defaultSocialCard.width, height: defaultSocialCard.height } } : {}),
+      ...(address ? { address } : {}),
+      ...(coordinates ? { geo: coordinates } : {}),
+      ...(isValidHttpsUrl(business.address.mapUrl) ? { hasMap: business.address.mapUrl } : {}),
+      ...(openingHoursSpecification ? { openingHoursSpecification } : {}),
+      ...(serviceAreas.length ? { areaServed: serviceAreas } : {}),
+      ...(socialSameAs ? { sameAs: socialSameAs } : {}),
+      ...(business.schemaOfferCatalog && services.length
+        ? {
+            hasOfferCatalog: {
+              '@type': 'OfferCatalog',
+              name: `${organizationName} services`,
+              itemListElement: services.map((service) => ({
+                '@type': 'Offer',
+                itemOffered: { '@type': 'Service', name: service.title, description: service.short },
+              })),
+            },
+          }
+        : {}),
+    }
+  : null;
+
+const website: Record<string, unknown> = {
   '@type': 'WebSite',
   '@id': websiteId,
   url: siteUrl,
-  name: business.name,
-  description: business.description,
-  publisher: { '@id': organizationId },
   inLanguage: business.locale,
+  ...(organizationName ? { name: organizationName } : {}),
+  ...(websiteDescription ? { description: websiteDescription } : {}),
+  ...(organization ? { publisher: { '@id': organizationId } } : {}),
 };
 
-/*
- * The page node. `type` used to be destructured and never read — Base.astro
- * passed `schemaType` on every page and it did nothing at all, which is the
- * quietest kind of dead prop: the call site looks correct and the output has
- * simply never contained it.
- */
-const PAGE_TYPE = {
+const pageTypes = {
   home: 'WebPage',
   page: 'WebPage',
   article: 'WebPage',
   blog: 'CollectionPage',
 } as const;
-
-const page = {
-  '@type': PAGE_TYPE[type],
-  '@id': `${abs(Astro.url.pathname)}#webpage`,
-  url: abs(Astro.url.pathname),
+const articleCanonical = article ? abs(article.url) : null;
+if (article && articleCanonical !== pageUrl) {
+  throw new Error(`Article canonical ${articleCanonical} must match its rendered route ${pageUrl}.`);
+}
+const articleId = articleCanonical ? `${articleCanonical}#blogposting` : null;
+const page: Record<string, unknown> = {
+  '@type': pageTypes[type],
+  '@id': pageId,
+  url: pageUrl,
   isPartOf: { '@id': websiteId },
-  about: { '@id': organizationId },
   inLanguage: business.locale,
+  ...(organization ? { about: { '@id': organizationId } } : {}),
+  ...(articleId ? { mainEntity: { '@id': articleId } } : {}),
 };
 
-const graph: Record<string, unknown>[] = [organization, website, page];
+const graph: Record<string, unknown>[] = [
+  ...(organization ? [organization] : []),
+  website,
+  page,
+];
 
 const crumbs = breadcrumbs ?? [];
 const questions = faq ?? [];
-
 if (crumbs.length) {
   graph.push({
     '@type': 'BreadcrumbList',
-    itemListElement: crumbs.map((crumb, i) => ({
+    itemListElement: crumbs.map((crumb, index) => ({
       '@type': 'ListItem',
-      position: i + 1,
+      position: index + 1,
       name: crumb.name,
       item: abs(crumb.href),
     })),
   });
 }
 
-if (article) {
-  graph.push({
+if (article && articleCanonical && articleId) {
+  const imageEntry = article.image
+    ? images[article.image] ?? Object.values(images).find((entry) => entry.src === article.image)
+    : undefined;
+  if (article.image && !imageEntry) {
+    throw new Error(`Article image "${article.image}" is not present in the generated media manifest.`);
+  }
+  const imageId = imageEntry ? `${articleCanonical}#primaryimage` : null;
+  if (imageEntry && imageId) {
+    graph.push({
+      '@type': 'ImageObject',
+      '@id': imageId,
+      url: abs(imageEntry.src),
+      contentUrl: abs(imageEntry.src),
+      width: imageEntry.width,
+      height: imageEntry.height,
+      ...(hasConfiguredText(article.imageAlt) ? { caption: article.imageAlt.trim() } : {}),
+    });
+  }
+
+  let authorUrl: string | undefined;
+  if (article.author?.url) {
+    const parsedAuthorUrl = new URL(article.author.url, Astro.site);
+    if (parsedAuthorUrl.protocol !== 'https:' || parsedAuthorUrl.username || parsedAuthorUrl.password) {
+      throw new Error('Article author.url must be a public HTTPS profile URL or same-site root-relative route.');
+    }
+    authorUrl = parsedAuthorUrl.href;
+  }
+  const author = article.author && hasConfiguredText(article.author.name)
+    ? {
+        '@type': article.author.type ?? 'Person',
+        name: article.author.name.trim(),
+        ...(authorUrl ? { url: authorUrl } : {}),
+      }
+    : null;
+  const blogPosting: Record<string, unknown> = {
     '@type': 'BlogPosting',
+    '@id': articleId,
     headline: article.headline,
     description: article.description,
-    ...(article.image ? { image: abs(article.image) } : {}),
     datePublished: article.publishedAt.toISOString(),
-    dateModified: (article.updatedAt ?? article.publishedAt).toISOString(),
-    author: { '@id': organizationId },
-    publisher: { '@id': organizationId },
-    mainEntityOfPage: { '@type': 'WebPage', '@id': abs(article.url) },
+    mainEntityOfPage: { '@id': pageId },
+    ...(article.updatedAt && article.updatedAt.getTime() !== article.publishedAt.getTime()
+      ? { dateModified: article.updatedAt.toISOString() }
+      : {}),
+    ...(imageId ? { image: { '@id': imageId } } : {}),
+    ...(author ? { author } : {}),
+    ...(organization ? { publisher: { '@id': organizationId } } : {}),
     isPartOf: { '@id': websiteId },
-  });
+  };
+  graph.push(blogPosting);
 }
 
 if (questions.length) {
@@ -160,14 +267,16 @@ if (questions.length) {
 }
 
 const jsonLd = { '@context': 'https://schema.org', '@graph': graph };
+const safeJson = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+const configuredAddress = address ? addressOneLine : null;
 ---
 
 <script
   type="application/ld+json"
   is:inline
-  set:html={JSON.stringify(jsonLd)}
+  set:html={safeJson}
 />
-<meta name="geo.placename" content={`${business.address.locality}, ${business.address.regionName}`} />
-<meta name="geo.position" content={`${business.geo.latitude};${business.geo.longitude}`} />
-<meta name="geo.region" content={`${business.address.country}-${business.address.region}`} />
-<meta name="business:contact_data:street_address" content={addressOneLine} />
+{configuredAddress && <meta name="business:contact_data:street_address" content={configuredAddress} />}
+{address && <meta name="geo.placename" content={`${business.address.locality}, ${business.address.regionName}`} />}
+{coordinates && <meta name="geo.position" content={`${latitude};${longitude}`} />}
+{address && <meta name="geo.region" content={`${business.address.country}-${business.address.region}`} />}

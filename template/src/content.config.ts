@@ -1,5 +1,9 @@
 import { defineCollection, z } from 'astro:content';
 import { glob } from 'astro/loaders';
+import { categoryByName } from './data/categories';
+import imageManifest from './data/image-manifest.json';
+
+const manifest = imageManifest as Record<string, { src: string }>;
 
 /**
  * Blog posts. The schema is strict on purpose: a bad edit fails the build
@@ -8,18 +12,37 @@ import { glob } from 'astro/loaders';
 const blog = defineCollection({
   loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
   schema: z.object({
-    title: z.string().min(1).max(120),
-    /** Overrides <title>; falls back to `title` when absent. */
-    seoTitle: z.string().max(120).optional(),
-    description: z.string().min(50).max(200),
+    title: z.string().trim().min(1),
+    /** Required <title> distinct from the H1; length guidance is advisory. */
+    seoTitle: z.string().trim().min(1),
+    /** No hard character limit: use search-preview guidance, not a guessed Google limit. */
+    description: z.string().trim().min(1),
     publishedAt: z.coerce.date(),
     updatedAt: z.coerce.date().optional(),
     /** Portable reference into public/img — never an absolute CDN URL. */
-    image: z.string().optional(),
+    image: z.string().trim().min(1).refine((key) => Boolean(manifest[key]), 'must match a generated media manifest key').optional(),
     imageAlt: z.string().optional(),
-    categories: z.array(z.string()).min(1),
+    categories: z.array(z.string().trim().min(1)).min(1).refine(
+      (items) => items.every((name) => Boolean(categoryByName(name))),
+      'each category must exactly match a name in src/data/categories.ts',
+    ),
     focusKeyword: z.string().optional(),
+    author: z.object({
+      name: z.string().trim().min(1),
+      type: z.enum(['Person', 'Organization']).optional(),
+      url: z.string().trim().min(1).refine(
+        (value) => value.startsWith('/') && !value.startsWith('//') || /^https:\/\//i.test(value),
+        'must be a root-relative profile route or HTTPS URL',
+      ).optional(),
+    }).optional(),
     draft: z.boolean().default(false),
+  }).superRefine((post, context) => {
+    if (post.image && !post.imageAlt?.trim()) {
+      context.addIssue({ code: 'custom', path: ['imageAlt'], message: 'a featured image requires meaningful, nonblank alt text' });
+    }
+    if (post.updatedAt && post.updatedAt < post.publishedAt) {
+      context.addIssue({ code: 'custom', path: ['updatedAt'], message: 'must not be earlier than publishedAt' });
+    }
   }),
 });
 
@@ -63,8 +86,8 @@ const isoDate = z
 const legal = defineCollection({
   loader: glob({ pattern: '**/*.md', base: './src/content/legal' }),
   schema: z.object({
-    title: z.string().min(1).max(120),
-    description: z.string().min(50).max(200),
+    title: z.string().trim().min(1),
+    description: z.string().trim().min(1),
     /** The date the terms took effect. Shown on the page. */
     effective: isoDate,
     /** Only when it has genuinely changed since. Omit otherwise. */
