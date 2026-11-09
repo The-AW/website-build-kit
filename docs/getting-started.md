@@ -1,9 +1,8 @@
 # Getting started
 
-Installing the kit, and the mechanical setup of a new site. For running an actual project
-end to end, see [how-to-start.md](how-to-start.md).
+Install the kit, or scaffold a new site from the reviewed AW fork commit. For the reusable migration sequence and the Mae evidence, see [aw-migration-process.md](aw-migration-process.md); for launch acceptance, see [aw-migration-checklist.md](aw-migration-checklist.md).
 
-## Install
+## Install the kit for Claude Code
 
 ```bash
 git clone https://github.com/The-AW/website-build-kit.git ~/coding/website-build-kit
@@ -12,98 +11,56 @@ cd ~/coding/website-build-kit
 ./install.sh --copy       # copies instead, if you prefer snapshots
 ```
 
-Verify: open any project in Claude Code and type `/` — `website-build` should be listed.
+Verify: open any project in Claude Code and type `/` — `website-build` should be listed. `install.sh` is for the Claude skill; it is not the client-site scaffolder.
 
-Because `install.sh` symlinks by default, `git pull` in the kit updates every project at once.
-That is usually what you want; use `--copy` if you would rather pin a version.
+## Scaffold an AW migration from this fork
 
-## Use
-
-```
-/website-build https://old-site.com     # migration — recon runs before any question
-/website-build "Acme Plumbing"          # greenfield
-/website-build                          # it will ask
-```
-
-The skill also matches on description, so "rebuild this WordPress site on Astro", "migrate us
-off Elementor" or "does our site meet WCAG?" picks it up without the command.
-
-## What happens
-
-1. **"Is there anything to import?"** — asked first, on its own
-2. **Recon** — if given a URL: sitemap, rendered HTML, source builder, SEO plugin export,
-   template families, forms, integrations, accessibility baseline, unpublished drafts
-3. **Three discovery rounds** — the business and the one action that counts as a win; scope,
-   content, integrations, providers and which laws apply; design direction and mobile
-4. **Spec** — restated for confirmation before any code
-5. **Build** — phases with gates, from `template/` if the stack is the default
-6. **Verify** — against the deployed site, not the build
-7. **Go live** — cutover in order, then watch the first week
-8. **Hand over** — architecture, configuration, content guide, runbook, traps
-
----
-
-## Setting up a new site from the template
+Do not use `npm create website-build-kit@latest` or `npx degit` for AW work: those fetch upstream, not the AW fork. After PR2 merges, reuse the clean kit clone from the install section, fast-forward it to AW `master`, then run the local scaffolder. It stamps that checkout's exact commit into the site package:
 
 ```bash
-npx degit The-AW/website-build-kit/template my-site
-cd my-site && npm install
+git -C "$HOME/coding/website-build-kit" checkout master
+git -C "$HOME/coding/website-build-kit" pull --ff-only origin master
+SITE_DIR="$HOME/coding/site-slug" # use a new, empty destination for this site's repository
+node "$HOME/coding/website-build-kit/scripts/scaffold-aw.mjs" "$SITE_DIR"
+cd "$SITE_DIR"
 ```
 
-**Node 22.12+ is required** — `.node-version` pins the version this was built against.
+It copies only tracked template files, including `.gitignore`, scripts and `package-lock.json`, then records the kit commit in the site's `package.json`. It refuses a dirty template, a non-empty destination, or missing scaffold essentials. Keep each site in its own repository; do not copy client assets, URLs, credentials or secrets into the kit.
 
-Then, in order. Each step is read by everything after it:
+Fill `aw-migration.json` before deploy: source URL, distinct production/staging hosts, repository and per-environment Cloudflare account/zone/Worker IDs, route/media inventory paths, redirect exceptions, forms choice, acceptance criteria and rollback snapshot/WordPress origin/restore steps. Builds refuse example hosts/Workers and missing source/repository fields; set `template` to `false` after the real site intake is complete.
 
-1. **`src/data/business.ts`** — name, phone, address, hours, service areas. Everything else
-   reads from it, including the structured data
-2. **`src/data/services.ts`**, `areas.ts`, `categories.ts` — on a migration, preserve source
-   taxonomy and URL slugs exactly, whether the source was a CMS or a static file tree, or every
-   `/category/<slug>/` URL breaks
-3. **`src/styles/tokens.css`** — brand colours and the type scale
-4. **`src/data/site.ts`** — `PRODUCTION_HOSTS`, and the client's **own** analytics IDs. Leave
-   them empty rather than inheriting an ID from another project
-5. **`wrangler.jsonc`** — worker name, and real KV namespace ids:
-   ```bash
-   npx wrangler kv namespace create "<site>-leads"
-   npx wrangler kv namespace create "<site>-leads-staging"
-   ```
-   Paste the ids in. An undeclared binding is auto-created on deploy, which works exactly once
-6. **`package.json`** — the staging and production URLs in the build scripts
-7. **`src/pages/accessibility.astro`** — the statement's dates, known gaps and contact route
-8. **Brand assets** into `media/source/brand/`, then `npm run media`
+## Build and deploy
 
 ```bash
-npm run recon -- https://old-site.com        # on a migration, BEFORE designing routes
-npm run dev                                  # layout and content work
-npm run tells                                # what is undecided, and the design tells
-npm run check                                # types — a bad edit should fail the build
-npm run build:staging && npx wrangler dev    # real bindings; configure Turnstile before form tests
-npm run verify -- https://new.example.com    # the DEPLOYED site. exits non-zero
-npm run a11y                                 # accessibility check, one URL per family
-npm run handover                             # docs/handover.md → PDF, for the client
+npm run recon -- https://<wordpress-source>
+npm run extract
+npm run media
+npm run build:staging
+npm run deploy:staging:dry-run
+npm run deploy:staging
+npm run verify -- https://<staging-host>
+npm run build:production
+npm run deploy:production:dry-run
+npm run deploy:production -- --confirm-production
+npm run verify -- https://<production-host>
 ```
 
-Use `wrangler dev` for anything touching `/api/*`, redirects or status codes — the Astro dev
-server models none of them, and they are exactly where things break.
+The default output is static Astro plus Cloudflare Workers Static Assets. `.aw/wrangler-staging.jsonc` and `.aw/wrangler-production.jsonc` are generated from the manifest and target different Workers; the checked-in `wrangler.jsonc` is neutral and must not be deployed directly. Staging is noindex with no production sitemap; production canonicals, robots and sitemap use its verified hostname. Unknown paths return a real 404. Build/deploy refuses placeholders, host overrides and environment/Worker mix-ups.
+
+Static migrations need no Worker runtime, form endpoint, Turnstile key, KV binding or notification provider. `forms.choice: "none"` is valid at launch. If a site selects `private_crm`, implement a same-origin API + Turnstile Siteverify + adapter to AW's existing private CRM and test privacy/retention and recovery behavior. The retained contact module is a KV-only draft; it is not the CRM integration and is not proven end-to-end. Do not enable it unchanged.
+
+Run `wrangler dev` only for a site that has explicitly enabled server routes; for static routes and status-code checks use the generated environment config. The production command requires `--confirm-production`, but already-granted session authorization must not be turned into repeated approval requests.
 
 ## Secrets
 
+The static starter has no runtime secrets. Only after a site-specific contact module has been implemented should you configure its secret and public widget key:
+
 ```bash
 npx wrangler secret put TURNSTILE_SECRET_KEY
-npx wrangler secret put LEADS_EXPORT_TOKEN     # openssl rand -base64 32
 ```
 
-The starter stores validated submissions in KV but sends no email or Slack notifications. No
-notification provider or channel is selected; resolve that owner decision and test the recovery
-path before using the form in production.
-
-Set the public `PUBLIC_TURNSTILE_SITE_KEY` in the build environment and configure the Turnstile
-widget's allowed hostnames. It is embedded in the page and is not a secret; never expose the
-server-side secret through a `PUBLIC_` variable.
-
-Locally, copy `.dev.vars.example` to `.dev.vars` — gitignored. Never the repo, never chat.
+Set `PUBLIC_TURNSTILE_SITE_KEY` in that site's build environment and register the exact staging/production hostnames. The public key is embedded in the page; never expose the server-side secret through a `PUBLIC_` variable. Store `.dev.vars` locally only; never commit it or send it in chat. No `LEADS_EXPORT_TOKEN` or KV export is part of the static AW default.
 
 ## Then
 
-The template's own `docs/runbook.md` carries the verification matrix, the go-live order and the
-first-week watch list, with the commands filled in.
+Use the site's `docs/runbook.md` for generic QA details, and the AW checklist for launch blockers. A pending notification provider is not a static migration blocker. Before retiring Cloudways, verify a backup and shared-server dependencies; keep the WordPress origin recoverable until the rollback window passes.

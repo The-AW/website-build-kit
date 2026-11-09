@@ -437,14 +437,20 @@ Worker script or runtime bindings; server routes, on-demand rendering and bindin
 runtime and the supported Astro adapter. Recheck the official Astro/Cloudflare guide for each
 project.
 
-Do not use LeadConnector for contact forms. Cloudflare Turnstile with server-side Siteverify is
-the selected anti-bot protection. Email and Slack notification transport remains pending: no
-provider or channel is selected, and the generic template archives leads in KV but sends no
-notifications. Do not add Brevo as a default or enable a live form until the owner selects and
-tests a notification path. The template also lacks request rate limiting, a total body-size cap,
-duplicate protection and durable notification recovery; close those gaps before production use.
-No DNS/MX change is automatic; capture records read-only and get separate approval before changing
-production mail flow or deploying.
+Do not use LeadConnector for contact forms. The AW migration starter is static by default: no
+contact endpoint, Worker runtime, KV binding, Turnstile key or notification service. Optional
+modules do not block a static migration. If a site selects a form, the intended path is a
+same-origin API, Turnstile Siteverify and that site's adapter to AW's existing private CRM; no
+email/Slack/Brevo provider is mandatory. The retained contact implementation is still a KV-only
+draft, not the CRM path, and is not proven end-to-end. Do not enable or claim it works unchanged.
+Before any later retirement of Cloudways, verify the backup and shared-server dependencies. Keep
+the WordPress origin recoverable through the rollback window.
+
+Use the local, pinned-fork scaffolder in `docs/aw-migration-process.md`; the upstream npm package
+`create-website-build-kit` is not this AW fork. Honour the active session's
+already-granted scope and do not re-request approval for each step. Do not widen that scope
+implicitly. The production deploy command still has an explicit `--confirm-production` guard.
+Capture DNS/mail records read-only and do not change mail flow unless that change is in scope.
 
 Use [`docs/aw-migration-process.md`](docs/aw-migration-process.md) for the reusable method and
 [`docs/aw-migration-checklist.md`](docs/aw-migration-checklist.md) for each site's copy.

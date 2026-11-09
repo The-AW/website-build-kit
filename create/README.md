@@ -6,6 +6,10 @@
 
 <p align="center"><em>Your build was green. The site was wrong.</em></p>
 
+> **AW migration note:** this npm package is published by upstream and does not track the
+> `The-AW/website-build-kit` fork. Do not use `npm create website-build-kit@latest` for AW sites;
+> use the pinned local scaffolder in [`../docs/aw-migration-process.md`](../docs/aw-migration-process.md).
+
 ```bash
 npm create website-build-kit@latest my-site
 ```

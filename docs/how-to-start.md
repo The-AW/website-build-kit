@@ -39,7 +39,7 @@ template does the mechanical half, and the rest is in `stacks.md` §1, §1c and 
 | --- | --- |
 | **Node 22.12+** | The template requires it. `.node-version` pins what it was built against |
 | **Google Chrome + the Claude extension** | **Recommended.** `curl` returns markup; a browser returns the page. Required for JS-rendered sources (Wix, Framer), and the only way to check that a page *looks* right, read its console, or capture before/after screenshots. It uses your existing Chrome session, so it can also read Search Console, GA4 and the old WordPress admin |
-| **A Cloudflare account, and `wrangler login`** | Everything else assumes you are authenticated. `npx wrangler whoami` should name you |
+| **Cloudflare account access** | A configured `CLOUDFLARE_API_TOKEN` is valid BYOK auth when `npx wrangler whoami` succeeds; missing Wrangler OAuth alone does not require `wrangler login` |
 | **`git` and a repo** | Deployment is a push. The repo is also the content backup |
 
 `degit`, `pa11y-ci` and `lighthouse` all run through `npx` — nothing to install.
@@ -51,7 +51,7 @@ The items that turn into launch-day emergencies when left late.
 | | Lead time |
 | --- | --- |
 | **Domain + DNS access, tested by logging in** | Days, if the owner is a previous agency. This blocks go-live more than anything technical |
-| **SPF, DKIM and DMARC for the sending domain** | Hours to propagate, and deliverability fails *silently* — mail is accepted and never arrives. Get the verified sender set up in week one, not launch week |
+| **SPF, DKIM and DMARC, only if email sending is in scope** | Do not add an email notification provider for a static migration or forms routed to the existing private CRM |
 | **Search Console + Bing verification** | Move to DNS TXT before cutover. File-based verification breaks the moment the file stops resolving, and losing verification loses the property's history |
 | **DNS TTL lowered to 300s** | 24h before cutover, so a mistake costs five minutes rather than a day |
 | **Credentials for anything bolted on** | However long the client takes to find them. Ask in week one — see `stacks.md` §1b |
@@ -68,7 +68,7 @@ Missing them is what stalls a build on day one.
 | **Who owns each account** | GA4, Search Console, the registrar, the booking tool. An unreachable previous agency is a this-week problem, not a launch-day one |
 | **Brand assets** | Logo light *and* dark, a vector favicon, brand hexes. Look at them — supplied "favicons" are frequently a different logo entirely |
 | **Business facts** | Name, phone, address, hours, service areas, credentials, founding year |
-| **Who owns enquiry follow-up** | Email/Slack notification transport is pending; decide the channel, destination, and accountable operator before production. A KV archive does not alert anyone |
+| **Forms choice** | Record `none` or `private_crm` in `aw-migration.json`; no form or notification transport is required for a static release |
 | **What counts as a win** | Phone call, form, booking, demo. **One.** It settles every layout argument later, and picks the archetype |
 | **Where their customers are** | Country, and any state or province. Decides which accessibility and privacy law binds them |
 
@@ -94,6 +94,9 @@ rounds, the spec, the gates, cutover and the first week.
 **If it starts writing code before step 6, stop it.** Building the wrong thing quickly is the
 failure this method exists to prevent.
 
+For an AW migration whose owner has already authorized the scope in the active session, record
+that scope and proceed without repeated approval prompts at each phase; do not expand it implicitly.
+
 ---
 
 ## The arc of a real project
@@ -109,10 +112,10 @@ what is blocking, so a context reset or a week away does not lose it.
 | 3 · Design system | Changing one token visibly moves the whole site; contrast clears at token level |
 | 4 · Build | Every inventoried URL resolves; keyboard and axe pass per family |
 | 5 · Media | Payload measured before and after; every image has intrinsic dimensions |
-| 6 · Integrations | A real submission produces a stored record **and** a delivered email |
+| 6 · Integrations | Every integration selected for this site passes its own test; forms are optional |
 | 7 · SEO parity | Parity table with a reason for every change; preserved paths still resolve |
-| 8 · Deploy and go live | Cutover in order; staging route removed; one real lead delivered |
-| 8b · First week | Submissions arriving, redirects holding, indexing steady |
+| 8 · Deploy and go live | Correct production host/Worker, route parity, real 404, acceptance and rollback recorded |
+| 8b · First week | Redirects holding, indexing steady; selected integrations observed |
 | 9 · Handover | Someone else can operate it |
 
 The parts that actually go wrong on real projects, in order of how often:
@@ -134,9 +137,13 @@ The full cutover is `references/build.md` §3 phase 8, and the template ships it
 
 ```
 TTL to 300s (24h ahead) → prove DNS access → move GSC verification to DNS TXT
-  → npm run verify (staging) → deploy production → cut DNS → remove staging route
-  → npm run verify (production) → submit sitemap → one real enquiry → restore TTL
+  → npm run deploy:staging → verify staging → production dry-run
+  → npm run deploy:production -- --confirm-production → verify production → restore TTL
 ```
+
+Use one release candidate and one live writer per site. A session authorization already granted for
+this scope is not repeated at each stage. Keep the staging Worker separate; do not detach it or
+reuse its target for production.
 
 Then watch the first week. `runbook.md` §4 has the table.
 
@@ -147,9 +154,12 @@ Then watch the first week. `runbook.md` §4 has the table.
 If you already know every answer and just want the skeleton:
 
 ```bash
-npx degit The-AW/website-build-kit/template my-site
-cd my-site && npm install && npm run dev
+node ~/coding/website-build-kit/scripts/scaffold-aw.mjs ~/coding/my-site
+cd ~/coding/my-site
 ```
+
+Run it from a clean checkout of the reviewed AW fork commit. `npm create website-build-kit@latest`
+and `npx degit` point to the upstream package/template, not this fork.
 
 Node **22.12+**. Fill in `src/data/business.ts` first — the header, footer, every CTA, the
 emails and the structured data all read from it. Full checklist in

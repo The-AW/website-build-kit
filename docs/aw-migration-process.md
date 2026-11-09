@@ -1,74 +1,62 @@
-# AW website migration process
+# AW WordPress migration path
 
-This is AW's reusable process for moving an existing marketing or content site into a site-specific repository. It is a process guide, not a client specification. Record client URLs, content, screenshots, credentials, analytics identifiers and form submissions only in that client's repository or approved private systems; never in this public kit.
+Use this path for the next AW migrations. Each site lives in its own repository; this kit contains no client URLs, content, assets, credentials, CRM data or analytics IDs. Keep file-based content, no CMS, and no Brevo integration.
 
-## Baseline decisions
+## 1. Pin and scaffold this fork
 
-- **Keep repositories separate.** The kit contains reusable methods and a generic starter. Every site gets its own repository, deployment configuration, content, assets, secrets and persistent `CLAUDE.md` context. A kit change does not update a site already scaffolded from it; make site-specific changes in the site repository, not by copying client files into this kit.
-- **No CMS is selected.** Keep content in version-controlled files in the site's repository (for example Markdown, JSON and typed data modules) and keep one source of truth. Do not configure PagesCMS or add a `.pages.yml`. Cloudflare EmDash is the only future CMS possibility mentioned here; it is not selected, installed or a current dependency.
-- **Use Astro with Cloudflare when the site fits, and separate static hosting from runtime.** A purely static Astro build can deploy `dist/` as Workers Static Assets with Wrangler; it needs no Astro adapter, application Worker script or runtime bindings. On-demand routes, server rendering or Cloudflare bindings require a Worker runtime; use the supported Astro Cloudflare adapter for those Astro features. The current kit template is not static-only because it has a contact API route and KV bindings. Choose a different stack when the site is an application, needs unsuitable runtime behavior, or has an existing platform that should remain. Re-check the official guides and lockfile for each project. [Astro Cloudflare integration](https://docs.astro.build/en/guides/integrations-guide/cloudflare/) · [Cloudflare Workers Astro guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/astro/)
-- **Use a first-party form endpoint and Cloudflare Turnstile for anti-bot protection.** Turnstile is the selected anti-bot service. The generic template renders the widget and validates each non-honeypot submission through Siteverify, checking token success, hostname and the `contact` action. Set `PUBLIC_TURNSTILE_SITE_KEY` in the build environment and `TURNSTILE_SECRET_KEY` as a Worker secret. Rate limiting, an overall body-size cap and duplicate/idempotency handling remain launch requirements. [Turnstile client widget](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/) · [Server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
-- **Email and Slack notification transport is pending.** No provider or channel is selected; do not add Brevo or Slack as a default or imply that the template sends notifications. Record the owner's decision, the data shared, destinations, retention, failure handling and accountable operator before enabling a live form. Until then the generic template's lead archive is not an alerting or delivery channel.
-- **Treat deployment and DNS as separate approvals.** A migration may prepare a build and a cutover plan, but must not publish, change production DNS, or alter MX/email records unless those actions are separately authorized.
+Do not use `npm create website-build-kit@latest` or `npx degit` for an AW site: those fetch the upstream distribution, not this fork. After PR2 is merged, clone AW `master` and run this exact entry sequence; the clean checkout's current commit is stamped into the site `package.json`. The scaffolder copies only tracked template files, including `.gitignore`, scripts and `package-lock.json`.
 
-## Migration stages and gates
+```bash
+git clone --branch master https://github.com/The-AW/website-build-kit.git "$HOME/coding/website-build-kit"
+SITE_DIR="$HOME/coding/site-slug" # use a new, empty destination for this site's repository
+node "$HOME/coding/website-build-kit/scripts/scaffold-aw.mjs" "$SITE_DIR"
+cd "$SITE_DIR"
+```
 
-### 1. Reconnaissance before implementation
+Fill in `aw-migration.json` before any deploy. It records the WordPress source URL; separate staging and production hosts; repository, per-environment Cloudflare account/zone/Worker targets; route and media inventory paths; redirect exceptions; `forms.choice`; acceptance criteria; and a rollback snapshot, preserved WordPress origin and restore steps. Do not copy client assets or secrets into the kit. Builds refuse placeholder hosts/Workers and missing source/repository fields; after intake is complete, set `template` to `false`. Deploys also require real account/zone IDs and route/media inventories; production additionally requires recorded acceptance and an existing rollback snapshot.
 
-Capture a baseline while the source site is still available. Inventory URLs from `robots.txt`, every sitemap index and child sitemap, navigation, feeds, search results, archived routes and any platform export. For WordPress, inspect the REST API when available, but compare it with rendered pages; a database or API export alone may omit builder-rendered content. Use a real browser for JavaScript-rendered pages and for the visual baseline.
+## 2. Inventory, migrate and build
 
-For every route, record the source URL, final path, page family, response status, canonical, title, description, language, indexability and intended disposition. Inventory redirects, pagination, taxonomy, image and download URLs, structured data, verification files, analytics, consent, booking, chat, search and all forms. Record email hosting and DNS records read-only. Mark inaccessible resources and make no silent substitutions.
+```bash
+npm run recon -- https://<wordpress-source>
+npm run extract
+npm run media
+npm run build:staging
+npm run check:sitemap
+npm run deploy:staging:dry-run
+npm run deploy:staging
+npm run verify -- https://<staging-host>
+```
 
-**Gate:** route inventory, integrations inventory, desktop/mobile screenshots and an owner-visible list of missing access or content exist before routes or designs are rewritten.
+Review the full route and media inventories before implementation. `inventories.media` defaults to `recon/media.csv` with columns `source_url,local_path,status,sha256,alt,usage` and a reviewed row for every source asset (or an explicit no-media row); `npm run media` separately writes the processed-image manifest. Keep `public/_redirects` empty until reviewed; every rule must match a `redirectExceptions` item with `source`, `destination`, `status` and `reason`. Preserve useful crawl, media, URL, redirect, accessibility and 404 checks. `aw-migration.json` is the host source of truth: build scripts refuse placeholders and conflicting `PUBLIC_SITE_URL` values. Generated `.aw/wrangler-staging.jsonc` and `.aw/wrangler-production.jsonc` use different Worker names and exact hostnames, set `workers_dev: false` and `preview_urls: false`, and retain only their intended custom-domain route. Immediately before invoking Wrangler, deploy validates the exact selected file again, including `dist/server/wrangler.json` if runtime is enabled. The checked-in `wrangler.jsonc` is neutral and must not be deployed directly.
 
-### 2. Extract content and media without changing meaning
+The default is static Astro plus Cloudflare Workers Static Assets: no Astro Worker adapter, contact API, Turnstile key, KV binding or notification service. The build gate checks staging page-meta/header/robots noindex, absence of a staging sitemap, and environment-specific canonicals; production requires its own robots/sitemap host and a real 404. Optional modules do not block a static migration.
 
-Preserve the source language, route slugs, headings, body copy, image alt text, internal links, metadata and structured data unless an owner-approved change is recorded. Store the migrated content in version-controlled files in the site's repository and preserve one source of truth. Existing source CMS exports or APIs are additional extraction sources only; they do not select a CMS for the new site.
+`forms.choice` defaults to `none`. If a site explicitly needs a form, the target design is a same-origin API, server-side Turnstile Siteverify and an adapter to AW's existing private CRM. No notification provider is mandatory. The current contact module is still in implementation: its retained KV-only draft is not the CRM path and has not been proven end-to-end. Do not enable it or claim it works until the site-specific adapter, recovery behavior, privacy/retention and staging tests are implemented and reviewed.
 
-Keep media in the site repository where appropriate. Create a manifest with the original URL, local path, fetch status, hash, alt text and any usage/licensing note. Keep source originals apart from generated responsive formats. A failed or blocked image is a review item, not permission to invent a replacement. Verify that every intended local media reference resolves after the build.
+## 3. Production release and rollback
 
-**Gate:** route-to-content mapping and media manifest have no unexplained gaps; every exception has an owner decision or an explicit open item.
+```bash
+npm run build:production
+npm run deploy:production:dry-run
+npm run deploy:production -- --confirm-production
+npm run verify -- https://<production-host>
+```
 
-### 3. Create the site-specific project
+Production build/deploy refuses example or staging hosts, reused Worker names, an incomplete migration manifest, missing acceptance criteria, or a missing rollback snapshot/WordPress origin. `--confirm-production` is an explicit command guard, not a request for repeated approval: honor the active session's already-granted scope and do not insert new approval gates for the same authorized release.
 
-Scaffold from the kit only after reconnaissance establishes that its architecture fits. Keep the site in a separate repository. Update that repository's README and `CLAUDE.md` with the chosen stack, route and file-based content conventions, service accounts, form behavior, privacy/retention assumptions and deployment boundaries. Never copy project material, tokens or account IDs into this kit.
+Minimal launch blockers are: the production build targets the production host and Worker; every inventoried source URL resolves or has a reviewed redirect/disposition; production robots/sitemap/canonicals and a real 404 are correct; staging stays noindex; acceptance and rollback records exist; and the old WordPress origin remains recoverable. If `forms.choice` is `none`, forms, CRM and optional analytics are not blockers. After-launch polish is tracked separately and must not be confused with a release blocker.
 
-Keep content in versioned files in the site's repository. Do not configure PagesCMS or another CMS as part of the AW baseline. EmDash may be evaluated in the future only if the owner requests reconsideration; assess its maturity, editorial workflow, hosting and migration/export behavior at that time, without presuming adoption.
+Before cutover, preserve a rollback snapshot and the WordPress origin. Do not retire Cloudways until a backup is verified and shared-server dependencies are checked; other sites may share that server. Keep the WordPress application/server until production smoke checks pass.
 
-### 4. Implement routes, content and integrations
+## 4. Cloudflare auth and asset-upload fallback
 
-Build reusable components around the source site's page families without imposing the kit's sample design on the migrated site. Keep canonical URLs, sitemap behavior and redirects tied to the route inventory. Do not redirect an old route to the homepage as a catch-all. Keep structured data truthful and based on verified business facts.
+The proven auth path is BYOK `CLOUDFLARE_API_TOKEN` in the environment. Run `npx wrangler whoami` first. If it succeeds, missing Wrangler OAuth is not missing configured API access and `wrangler login` is unnecessary. Never print or pass the token as a command-line argument.
 
-Replace third-party forms as a distinct integration task. A form's visual embed is not the same as its lead-capture, CRM, notification or autoresponder behavior. Document which capabilities are intentionally retained, replaced or dropped. If a third-party account is unavailable or prohibited, do not silently leave its script or iframe in production.
+If Wrangler's bulk asset transfer fails with `fetch failed` before activation, first confirm the failure and target; do not report a successful deploy. Use Cloudflare's [official Workers Static Assets direct-upload API](https://developers.cloudflare.com/workers/static-assets/direct-upload/): `POST /accounts/{account}/workers/scripts/{worker}/assets-upload-session` with the full manifest; upload only requested missing hashes to `/accounts/{account}/workers/assets/upload?base64=true` in bounded multipart batches using the short-lived upload JWT; `POST /accounts/{account}/workers/scripts/{worker}/versions` with completion JWT and Worker module/metadata; verify the returned version; then `POST /accounts/{account}/workers/scripts/{worker}/deployments` for that exact version at 100% and read back the deployment. Keep the BYOK token in the environment and use `curl --config -` for transient JWTs so neither token appears in argv/logs. Attach a custom domain separately only for a first cutover. For later releases retain the existing domain/DNS and rollback version; do not detach or recreate DNS.
 
-### 5. Contact form, anti-bot protection and notifications
+This flow is evidenced by Mae Experiente production: the injected BYOK token passed `wrangler whoami`, Wrangler's standard bulk transfer failed before activation, and the official API path completed version/deployment/domain readback. The one-off Mae helper was pinned to its PR and first-deploy-only; do not reuse it unchanged. See the [final cutover task aTJVRFYyXThd6nA8LNJLdL](https://manus.im/app/task/aTJVRFYyXThd6nA8LNJLdL) and [merged Mae PR #12](https://github.com/The-AW/mae-experiente/pull/12). That cutover had one release candidate and one live writer; unrelated sites stayed isolated. Parallel work is safe only for independent tasks supplied with the complete site, repository, domain, target-ID and decision context; review the final meaningful diff, not repeated approval rounds.
 
-The recommended AW baseline is a **first-party, source-controlled endpoint** in the site's repository. Use a Worker runtime when the endpoint is implemented on Workers; a purely static Astro build has no server route or bindings:
+## 5. After launch
 
-1. The browser submits a native HTML form to a same-origin route such as `/api/contact/`. Match Astro's configured trailing-slash behavior and test that the POST reaches the handler directly; a redirect after POST can lose the submission.
-2. Allow only intended content types and fields, cap the total request-body size before parsing, and validate field types, lengths and required values. Check `Origin` when present as defense in depth, then apply a honeypot and rate limiting. Turnstile is selected: include it in the AW baseline and call Siteverify on the server for each submitted token. Reject missing, invalid, expired or replayed tokens and handle Siteverify outages with a recoverable error; never bypass verification silently. The client widget alone does not protect the endpoint.
-3. If the owner wants a submission archive, persist only the minimum necessary fields. Set retention and deletion rules for each store, avoid personal data in logs and storage metadata, and secure any export route. KV expiry does not expire copies in an inbox, Slack workspace, provider logs or backups. If no archive is required, do not retain submissions merely because the code can.
-4. **Notification transport remains pending.** Email and Slack are both undecided; no email provider, Brevo adapter or Slack destination is selected. Do not configure or describe a notification channel until the owner makes an explicit decision. Before a live form, document the selected transport, recipient/channel, fields shared, staging destination, privacy/retention, failure/retry path and accountable operator. Do not send the visitor's address in a sender field if an email channel is later approved.
-5. Define partial success and recovery for the chosen design. A stored lead with no alert is not delivery. Do not tell a visitor to resubmit after a partial failure; provide an operator-visible recovery path and test it before launch. A provider acknowledgment does not prove that a person read or acted on a lead.
-
-The generic template keeps content in files, has no CMS configuration, validates Turnstile, and can archive leads in KV. It does **not** send email or Slack notifications. Reuse the endpoint as a pattern, not an unchecked drop-in: it still lacks an overall request-body size cap, request rate limiting, duplicate/idempotency protection and durable notification recovery. Do not treat the archive as an operational notification system or use the starter form in production until the owner has selected and tested a notification path and the remaining abuse/recovery controls are addressed. Minimize fields and include every processor and copy in privacy, access, retention and deletion decisions.
-
-Cloudflare Email Routing is for inbound mail, not outbound form notification; changing it can affect existing MX records. No provider, mail routing, DNS or MX change is selected by this process. Capture existing records read-only and require separate owner approval for any future change.
-
-### 6. Verify parity and behavior
-
-Use the complete source URL inventory as the expected set. Build and type-check the site, then compare built and served routes with the old inventory. Test internal links, redirects, sitemap and robots behavior, canonical and metadata parity, structured data, local assets, real 404 status, console/network failures, accessibility and representative desktop/mobile layouts. Check each page family, not only the homepage.
-
-Exercise the contact route with valid, invalid, malformed, cross-origin, empty, duplicate and honeypot submissions. Verify rate limiting and Turnstile Siteverify behavior, including missing, expired, replayed and invalid tokens plus Siteverify outage. Confirm storage, and separately test every notification channel only after an owner has selected it; include provider failure, duplicate retry behavior, retention, export authorization and visitor-facing success/failure states. Never send real email or post personal data to a production Slack channel during tests; use approved staging destinations.
-
-**Gate:** automated checks pass and visual differences are reviewed. The form must have server-side Turnstile validation, a rate-limit control, a tested recovery path for every enabled notification channel, and privacy/retention rules covering the archive and notification copies. An unresolved email/Slack transport decision blocks launch readiness; any other exception needs a named owner decision and written risk acceptance.
-
-### 7. Handover and rollout planning
-
-Deliver the source repository, content/media manifests, route and redirect inventory, test evidence, service/binding list, secrets setup instructions, contact-form data-flow description, retention and deletion policy for the archive and each notification copy, rollback instructions and open decisions. Capture DNS and email records read-only before any cutover. Check MX, SPF, DKIM, DMARC and verification records independently from website records.
-
-Deployment, production cutover, DNS changes and changes to existing email routing are not implied by a successful build. They require a separate, explicit owner-approved rollout step with a tested rollback and monitoring plan. During the first week after an authorized launch, check 404s, form submissions, delivery failures, analytics continuity and Search Console coverage.
-
-## References checked
-
-The Astro/Cloudflare framework and Turnstile behavior above are linked to their official documentation. Product availability and limits can change; re-check the linked pages before any later project decision. The generic template's remaining form gaps are listed explicitly above; do not infer that a checklist item is implemented just because the starter has a contact route.
+Check representative routes and media, production canonicals/indexability, production sitemap and robots, unknown-path 404 status, redirects and any enabled CRM path. Record results in the site repository. Keep after-launch copy, design and non-blocking integration polish separate from the minimum launch gate.

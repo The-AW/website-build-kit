@@ -476,110 +476,73 @@ CMS while scaffolding a site.
 
 ---
 
-## 5. Form notifications — pending owner decision
+## 5. Form notifications — not a static AW default
 
-email provider, and do not post to Slack by default. The generic starter validates Turnstile and
-archives leads in KV; it sends no email or Slack notification. An archive is not an alert or
-delivery channel, so the live form must not launch until the owner selects and tests a notification path.
+AW migrations start static, with `forms.choice: "none"`: no form runtime, KV archive, email, Slack,
+Brevo or other notification provider. This is not a pending owner decision and does not block launch.
+If a site explicitly selects forms, use a same-origin API + Turnstile + adapter to AW's existing
+private CRM; do not introduce a new SaaS or notification channel. The isolated KV-only contact draft
+is not that integration and is not proven end-to-end.
 
-When a future owner-approved choice is made, document the provider/channel, sender or destination,
-fields shared, staging setup, access, retention/deletion, partial failure behavior, retry/alerting and
-who is accountable for checking delivery. Keep any credentials in the platform secret store. Use a
-separate staging destination and never send test personal data to production. A provider acknowledgment
-is not proof that a person read or acted on a lead.
+For other projects that separately require notifications, document the provider/channel, fields
+shared, staging destination, retention/deletion, failure/recovery behavior and accountable operator.
+Keep credentials in the platform secret store and never send test personal data to production.
 
-Cloudflare Email Routing is for inbound mail, not outbound contact-form notification, and changing it
-can affect existing MX records. No DNS, MX or email-routing change is implied here; capture records
-read-only and require separate owner approval for any future change.
+Cloudflare Email Routing is inbound mail, not outbound form notification, and changing it can affect
+existing MX records. No DNS, MX or email-routing change is implied here; preserve the current records.
 
 ---
 
-## 6. Forms, spam and lead storage
+## 6. Forms, spam and data storage — only when selected
 
-**Storage** — write it down before calling anyone else's API:
+AW's static baseline does not accept submissions. Leave `forms.choice: "none"` unless a site
+explicitly requires a contact form; optional forms do not block the static migration. If forms are
+selected, the AW path is a same-origin API + Turnstile Siteverify + adapter to AW's existing private
+CRM. Do not add a new SaaS or local KV archive by default. The retained KV-only module is a draft,
+not the CRM adapter, and is not proven end-to-end.
 
-| Option | When |
+For projects with an explicitly selected form, document its storage and data flow before release:
+
+| Option | Use only when |
 | --- | --- |
-| **Cloudflare KV** ✅ default | Append-only lead log. Key `lead:<iso>:<uuid>` sorts chronologically |
-| **Cloudflare D1** | You need to query, filter or report on submissions |
-| **Airtable / Google Sheets** | The client wants to live in a spreadsheet. Adds an OAuth dependency |
-| **CRM direct** (HubSpot, Pipedrive) | Sales team already works there — but *still* write locally first |
+| **Existing private CRM** | AW forms choice is `private_crm`; the site adapter and CRM account already exist |
+| **Cloudflare KV / D1** | A separate project owner explicitly selected a first-party store and its operations |
+| **Airtable / Google Sheets** | A separate project selected the SaaS and accepted its OAuth/data-processing dependency |
 
 ### A retention period must name the thing that enforces it
 
-The template sets `leadRetentionDays` and writes it as a KV `expirationTtl`, so **the store
-enforces it** and nobody has to remember. That is the standard every other store has to be held
-to, and most of them fail it:
+The AW static default has no lead store or `leadRetentionDays`. A site enabling forms must name
+the actual retention/deletion mechanism in the CRM or chosen store and keep it aligned with the
+privacy notice. For non-AW stores, verify the enforcement itself rather than assuming a sentence
+in the policy or a field in source code expires external copies.
 
-| Store | What enforces the period | Where it lives |
-| --- | --- | --- |
-| **Workers KV** ✅ | `expirationTtl` on the write | Your code. Reviewed, deployed, visible in the diff |
-| **R2** | A **bucket lifecycle rule** | The Cloudflare dashboard — **not in the repo** |
-| **D1** | A scheduled delete you write | A cron trigger you have to build |
-| **A spreadsheet or CRM** | A human, on a calendar reminder | Nowhere |
+| Store | Example enforcement to verify |
+| --- | --- |
+| **Workers KV** | `expirationTtl` on each write |
+| **R2** | Bucket lifecycle rule in account configuration |
+| **D1** | Scheduled deletion/retention job |
+| **Existing CRM** | Its actual retention controls and deletion workflow |
 
-⚠ **A PRIVACY NOTICE STATING A PERIOD NOTHING ENFORCES IS A FALSE STATEMENT, AND IT IS SILENT.**
-The build is clean, the deploy is clean, the policy reads correctly, and the data is still there
-a year later. Nothing errors, nothing logs, and the only person who ever finds out is a lawyer
-reading a document that turned out not to be true.
+Before the privacy notice goes live, name the enforcement mechanism for every store the site writes
+to. If none exists, do not claim a fixed retention period; resolve the implementation with the
+owner's existing CRM administrator or counsel.
 
-**The R2 case is the one that catches people**, because it looks solved. A real build stored
-résumés in R2 with an `applicationRetentionDays` that drove the KV record *and* the careers-page
-copy — both correct, both visible in the diff — while the files themselves had no expiry at all.
-It was caught by someone thinking it through, not by anything in the repo, because **a bucket
-lifecycle rule is account configuration and no gate can see it**.
+**Reading submissions:** the AW static starter has no form, lead archive, export endpoint or
+operator notification. If `forms.choice: "private_crm"`, use the existing CRM's access controls,
+data retrieval and deletion workflow; do not create a CSV/KV sidecar or install an unrelated lead
+management package by default.
 
-So: before the privacy notice goes live, name the enforcing mechanism for every store the site
-writes to. If you cannot name one, either build it or change the notice. `runbook.md` §3 has it
-as a go-live line.
+**Conditional form protection:** an enabled AW form uses a same-origin API, Cloudflare Turnstile
+with server-side Siteverify, and the adapter to AW's existing private CRM. A browser widget without
+Siteverify is not protection. Tokens are single-use and expire; provide recoverable handling for
+invalid/replayed tokens and verification outages, plus request/body limits and recovery tests.
+Document Turnstile's data-processing impact and test widget accessibility. If Invisible mode is
+selected, include Cloudflare's [Privacy Addendum](https://developers.cloudflare.com/turnstile/concepts/widget/).
+See [Cloudflare's validation guide](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/).
 
-**Reading them back** — storage is only half of it. The template ships a token-protected CSV at
-`/api/leads.csv`, which is the right minimum: one route, no UI, no dependency. It is enough when
-an authorized operator is responsible for retrieving the archive; no notification email or Slack
-message is sent by the starter.
-
-It stops being enough the moment somebody does, and the reason is specific:
-
-| | Template's built-in ✅ default | [`@nurkamol/leads-kit`](https://www.npmjs.com/package/@nurkamol/leads-kit) |
-| --- | --- | --- |
-| Auth | A bearer token **in the query string** | Cloudflare Access — verifies the assertion rather than trusting a header |
-| Reading | Download a CSV and open it | Filterable list, status, summary, in the browser |
-| Delete | Not offered | Audited |
-| Export | CSV | CSV / JSON / XML / Mailchimp / Klaviyo, consent-aware |
-
-⚠ **The token is in a URL, and URLs leak.** They land in server logs, browser history, `Referer`
-headers and anything that proxies the request. That is an acceptable trade for a route the
-developer curls once a month, and a bad one for a link the client keeps in a bookmark or pastes
-into a chat. If a non-developer is going to read leads, move the auth.
-
-`npx leads-kit init` reads the framework and KV binding out of the config already in the project,
-writes the context module and routes, and **never overwrites** — an existing file is reported and
-skipped, so a second run is not an error. It touches no configuration at all: bindings, secrets
-and Access are decisions or live-account operations, and `--dry-run` prints the plan. Zero
-dependencies, framework-free, so it runs on Workers unchanged. Then `npx leads-kit doctor --url
-https://yoursite.com`.
-
-**When not to.** If nobody will ever open it, the built-in CSV is one route and this is a second
-surface to keep working. Cloudflare Access also has to be set up, which is a real-account
-operation, not a build step. Offer it at discovery — [`kickoff.md`](kickoff.md) §2 — rather than
-retrofitting it in week three.
-
-**AW form protection baseline:** Cloudflare Turnstile, with server-side Siteverify on every
-accepted submission, plus a honeypot and endpoint rate limiting. A browser widget without
-Siteverify is not protection; Cloudflare documents server-side validation as mandatory. Tokens
-expire after five minutes and are single-use, so provide a recoverable error path for expired,
-replayed or invalid tokens and for verification-service outages. Turnstile adds a Cloudflare-hosted
-widget and data-processing dependency; document it and test widget accessibility rather than
-promising that Managed mode is always invisible. If Invisible mode is selected, Cloudflare requires
-the Turnstile Privacy Addendum to be referenced in the site's privacy policy. See [Cloudflare's
-validation guide](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
-and [widget modes and privacy requirements](https://developers.cloudflare.com/turnstile/concepts/widget/).
-
-The current generic template includes the widget and server-side Siteverify checks, archives leads
-in KV, and sends no email or Slack notifications. It also lacks request rate limiting, an overall
-body-size cap, duplicate protection and durable recovery. Configure the public site key and Worker
-secret, resolve the notification decision, then add/test the remaining controls in the site
-repository before production use.
+The retained generic handler and its Turnstile/origin unit tests do not implement or prove the
+existing-private-CRM path. The draft is not to be enabled unchanged; no notification decision or
+provider selection is required for a static migration.
 
 ---
 

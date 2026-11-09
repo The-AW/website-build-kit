@@ -6,6 +6,9 @@ before debugging anything strange.
 The first section ships with the template and describes traps in *this* code. **The second is
 yours to fill in during the build** — it is the highest-value page in the repo six months later.
 
+The runtime/form traps below apply only to an explicitly enabled contact module. The AW static
+default has no `/api/contact/` route, Astro Worker adapter or KV binding.
+
 ---
 
 ## In this codebase
@@ -622,7 +625,8 @@ would mean `run_worker_first`, routing every request through a worker to fix a
 handful.
 
 Host-level redirects are a **Cloudflare Single Redirect**, which runs in the
-dynamic-redirect phase before Worker routes. See `docs/runbook.md` §3a.
+dynamic-redirect phase before Worker routes. Configure it separately from the
+static Worker target and verify it against the site's host policy.
 
 ---
 

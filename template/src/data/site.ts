@@ -5,6 +5,7 @@
  * script (`build:staging` / `build:production`); everything else follows from
  * it, so there is nothing a human has to remember to change at go-live.
  */
+import migration from '../../aw-migration.json';
 
 export type SiteEnv = 'development' | 'staging' | 'production';
 
@@ -14,7 +15,7 @@ export const SITE_ENV = (import.meta.env.PUBLIC_SITE_ENV ?? 'development') as Si
  * Exact hostname allowlist. A suffix match would treat
  * `new.example.com` as production, which is precisely the bug.
  */
-export const PRODUCTION_HOSTS = ['example.com', 'www.example.com'] as const;
+export const PRODUCTION_HOSTS = [new URL(migration.hosts.production).hostname.toLowerCase()] as const;
 
 export const isProduction = SITE_ENV === 'production';
 export const isStaging = SITE_ENV === 'staging';
@@ -49,7 +50,7 @@ const ANALYTICS = {
  */
 const CF_BEACON_TOKEN = ''; // 32-char hex
 
-/** True only on a real production host. Used by the worker as a runtime guard. */
+/** True only on a real production host. Useful to an explicitly enabled runtime module. */
 export function isProductionHost(hostname: string): boolean {
   return (PRODUCTION_HOSTS as readonly string[]).includes(hostname.toLowerCase());
 }
@@ -74,31 +75,6 @@ export const site = {
   /** Cloudflare Web Analytics. Production only, and only if a token is set. */
   cfBeaconToken: isProduction && CF_BEACON_TOKEN ? CF_BEACON_TOKEN : null,
 
-  /** Leads submitted off production are tagged and written to a separate namespace. */
-  leadsBinding: isProduction ? ('LEADS' as const) : ('LEADS_STAGING' as const),
-  leadTag: isProduction ? ('live' as const) : ('test' as const),
-
-  /**
-   * How long a stored lead survives, in days. Written as a KV `expirationTtl`,
-   * so expiry is enforced by the store rather than by anyone remembering.
-   *
-   * ── THIS IS A COMPLIANCE DECISION, NOT A STORAGE ONE ──────────────────────
-   * A lead is personal data. The UK GDPR and the GDPR both require a defined
-   * retention period and neither accepts "indefinitely" — and KV keeps a value
-   * forever unless it is told otherwise, so the default without this line is
-   * exactly the thing that cannot be justified.
-   *
-   * 180 days is a starter value for the configured archive, not a universal
-   * retention policy. The contact handler currently requires KV storage; if an
-   * owner decides not to retain submissions, change that flow deliberately and
-   * update its tests. No email or Slack notification transport is configured.
-   *
-   * ⚠ Raise it only with a reason you would give a regulator, and make sure the
-   * privacy notice says the same number. Staging is deliberately shorter — test
-   * submissions are not records of anything.
-   */
-  leadRetentionDays: isProduction ? 180 : 30,
-
 } as const;
 
 /**
@@ -112,9 +88,9 @@ export const site = {
  * the manifest's /icon-192.png. `npm run console` was the first thing to notice,
  * which is the point of it.
  *
- * Declared rather than detected with `fs`, because Base.astro also renders
- * server-side for the contact page and there is no filesystem in the Workers
- * runtime. Same reason the analytics IDs and `business.logoPath` are declared.
+ * Declared rather than detected with `fs`, so a build never guesses at assets
+ * or requires a filesystem at runtime if the optional contact module is enabled.
+ * Same reason the analytics IDs and `business.logoPath` are declared.
  */
 export const icons = {
   ico: null as string | null, // '/favicon.ico'

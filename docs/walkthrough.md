@@ -7,6 +7,11 @@ The method as a session, start to launch.
 > shown (the spec block, `BUILD-STATE.md`, the gates, the cutover) is the real one, lifted from
 > the references. Judge an actual run by whether it produces these shapes.
 
+> **Current AW migration path:** this older illustration's `degit`, KV form archive and
+> notification-blocker examples are superseded by [aw-migration-process.md](aw-migration-process.md).
+> AW sites scaffold locally from a reviewed fork commit, are static by default, and do not require
+> an email/Slack/Brevo transport to launch.
+
 A local services business — the most common brief, and the one that exercises the most
 machinery.
 
@@ -57,7 +62,7 @@ routes that ignore its URLs.
 ## Recon — it goes and looks
 
 ```
-● Bash(npx degit The-AW/website-build-kit/template . && npm install)
+● Bash(node ~/coding/website-build-kit/scripts/scaffold-aw.mjs ~/coding/example-plumbing)
   ⎿  installed
 
 ● Bash(npm run recon -- https://example.com)
@@ -146,8 +151,8 @@ Then it comes back with **three things, not a list of questions**:
 Reported per family because *"one token fixes all eight"* is a scope statement. A 900-row CSV is
 not.
 
-**Ownership is the question that blocks go-live** — an unreachable previous agency on the GA4
-property or the registrar is a this-week problem, not a launch-day one.
+**Production access is a real launch dependency** — confirm registrar, DNS and Cloudflare access
+early. Unknown analytics ownership is not a static launch blocker; omit unverified tags.
 
 ---
 
@@ -170,8 +175,9 @@ property or the registrar is a this-week problem, not a launch-day one.
 ● Round 2 — scope, providers, integrations, law.
 
   The starting point, subject to recon and fit:
-    Astro · Worker runtime for the first-party form · file-based content · Turnstile
-    Email/Slack notification transport: pending owner decision
+    Astro static · Cloudflare Worker assets · file-based content · no CMS
+    Forms: none by default; if selected, same-origin API + Turnstile + existing private CRM
+    No notification provider is mandatory
 
   Where are your customers — country, and any state that matters?
   Public sector, government contract, or federally funded healthcare?
@@ -224,14 +230,14 @@ Nothing already answered by recon gets asked, and it says what it assumed.
 
   Project      Example Plumbing · local services · win = phone call
   Archetype    local services
-  Stack        Astro static pages + Worker contact route · file-based content · Turnstile
-  Notifications email/Slack transport pending; no provider or channel selected
+  Stack        static Astro + Cloudflare Worker assets · file-based content · no CMS
+  Forms        none (optional private-CRM module not in scope)
   Routes       47 across 6 families
   Features     form + KV + CSV export · areas · blog · sticky call bar
   Design       Editorial · Fraunces + Inter · restrained motion
   Mobile       full-screen overlay · sticky call bar · offer + CTA above fold
   Compliance   WCAG 2.2 AA · no statutory deadline · CCPA · licence in footer
-  Environments new.example.com → example.com, from PUBLIC_SITE_ENV
+  Environments staging and production hosts + distinct Workers from aw-migration.json
   Open         ! Mailchimp audience id — requested
                ! GA4 property owner unknown
 ```
@@ -244,8 +250,9 @@ quickly is the failure the method exists to prevent.
 ## Build
 
 ```
-● Bash(npx degit The-AW/website-build-kit/template .)
-  ⎿  cloned The-AW/website-build-kit#HEAD
+● Read(aw-migration.json)
+● Generate(.aw/wrangler-staging.jsonc, .aw/wrangler-production.jsonc)
+  ⎿  two distinct Workers and verified hosts; no shared deploy target
 
 ● Write(BUILD-STATE.md)
 ● Phase 0 gate passed. Starting extraction.
@@ -258,11 +265,10 @@ is noise nobody reads.
 ## Phase 4 · Build          [in progress]
 
 Gates passed   0 recon ✅  1 extract ✅  2 model ✅  3 tokens ✅
-  Locked         Astro/CF · file-based content · Turnstile · KV archive · Editorial · Fraunces+Inter
+  Locked         static Astro/CF assets · file-based content · forms=none · Editorial · Fraunces+Inter
 Archetype      local services
 Compliance     WCAG 2.2 AA · no deadline · CCPA · licence in footer
-Open           ! Email/Slack notification transport pending — blocks go-live
-               ! GA4 property owner unknown — blocks go-live
+  Open           ! GA4 property owner unknown — blocks any analytics tag
                ? area page 6 has nothing distinct to say — cut it?
 Next           /services/* (6 of 8 done)
 
@@ -295,37 +301,37 @@ The gates are real stops:
 ```
 
 ```
-● Phase 6 gate — a 200 isn't the gate.
+● Optional contact gate
 
-  Browser submit through Turnstile with a fresh token           → 200
-  Missing/invalid token                                          → 403, no lead stored
-  Bash(npx wrangler kv key list --binding LEADS_STAGING)      → lead:2026-08-02T…
-  Email/Slack notification transport                            → pending; no delivery asserted
-  With JavaScript off, submission                              → rejected; phone/email fallback shown
+  forms.choice = none                 → no form endpoint, Turnstile key or CRM check; static launch continues
+  forms.choice = private_crm          → same-origin API + Turnstile + existing private CRM adapter
+  Negative requests                  → invalid token / malformed body / cross-origin are refused
+  Valid end-to-end CRM submission    → must be proven with approved staging data before claiming complete
 
-  Form validation/storage checks passed: empty → 422 with field errors,
-  honeypot → silent accept, cross-origin → 403. Turnstile failure never bypasses
-  verification. Go-live remains blocked until notification transport is selected and tested.
+  The retained contact module is still a KV-only draft and is not proven end-to-end.
+  It is not enabled in this static example; no notification service is required.
 ```
 
 ---
 
 ## Go live
 
-The example's notification transport is still pending, so **go-live is blocked**. Verify the
-staging build, record the blocker, and stop. Do not deploy to production, cut over traffic or
-change DNS until the owner selects a notification path and a separate rollout is approved.
+The static example has no form or notification dependency. Verify the actual release candidate,
+then use the environment-specific Worker and production command guard. Do not create another
+approval gate when the current session already authorized that scope; never expand the scope
+implicitly.
 
 ```console
-$ npm run verify -- https://new.example.com
-  ⎿  ✓ staging checks passed
-     ! Email/Slack notification transport pending — blocks go-live
-     ! No production deploy or DNS change performed
+$ npm run deploy:staging:dry-run && npm run deploy:staging
+$ npm run verify -- https://staging.example.org
+$ npm run deploy:production:dry-run
+$ npm run deploy:production -- --confirm-production
+$ npm run verify -- https://example.org
 ```
 
-Before any later launch, resolve the notification channel, test its failure/recovery path using
-an approved staging destination, obtain separate deployment/DNS approval, and verify the current
-DNS records. A successful staging build does not clear those approvals.
+Before cutover, keep a rollback snapshot and WordPress origin. Keep one live writer per site; do
+not reuse the staging Worker for production. Retire Cloudways only after verifying a backup and
+checking shared-server dependencies.
 
 ---
 
@@ -336,7 +342,7 @@ of them is silent.
 
 | When | Watch | Because |
 | --- | --- | --- |
-| Day 1 | Authorized archive and, only if separately selected, the notification destination | The current starter sends no notification; do not treat storage as an alert |
+| Day 1 | Only the CRM path explicitly enabled for this site; otherwise review 404s and redirects | Static default has no form/archive; do not imply an unselected integration exists |
 | Day 1 | The ten highest-traffic legacy URLs, by hand | A 301 landing on a 404 is invisible until traffic drops |
 | Day 2–3 | Search Console → Pages, and → Sitemaps | "Not indexed" is a canonical fault; "couldn't fetch" is a changed filename |
 | Week 1 | Is analytics recording anything at all | A missing tag and a quiet week look the same in the dashboard |

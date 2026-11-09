@@ -17,11 +17,10 @@
  * someone is tired, and a checklist run by hand at 11pm is not a check.
  *
  * ── NOTHING HERE CREATES DATA ──────────────────────────────────────────────
- * The form checks are deliberately limited to submissions the API refuses or
- * silently accepts: a honeypot hit (never stored), an empty body (422) and a
- * cross-origin post (403). A valid submission would write a real lead, so this
- * script never sends one. The starter has no email/Slack notification transport;
- * use staging data to test storage and any later owner-approved channel separately.
+ * The static AW default has no form API. When a site explicitly enables its
+ * contact module, the probes below are limited to requests the API refuses;
+ * this script never sends a valid CRM submission. End-to-end CRM delivery must
+ * be tested separately with approved staging data.
  *
  * ── WHAT IT CANNOT SEE ─────────────────────────────────────────────────────
  * Printed at the end, deliberately. A check that stays silent about its blind
@@ -1068,11 +1067,20 @@ if (fontRes.status !== 404) {
   notes.push('checked /fonts/ for an immutable rule — verify a real font URL by hand');
 }
 
-/* ── Form ──────────────────────────────────────────────────────────────────
- *
- * Only the submissions the API refuses. See the header of this file.
- */
-section('Form (non-destructive submissions only)');
+let contactEnabled = false;
+try {
+  contactEnabled = JSON.parse(readFileSync('aw-migration.json', 'utf8')).forms?.choice === 'private_crm';
+} catch {
+  // Older, non-AW projects without the AW manifest retain the established route probes.
+  contactEnabled = true;
+}
+
+/* ── Form ────────────────────────────────────────────────────────────────── */
+if (!contactEnabled) {
+  section('Optional contact module');
+  record('contact runtime is disabled', true, 'forms.choice is none; no /api/contact probes were sent');
+} else {
+  section('Form (non-destructive submissions only)');
 
 const formBody = (extra) =>
   new URLSearchParams({ name: 'Verify', email: 'verify@example.com', phone: '5555550123', message: 'verification', ...extra });
@@ -1130,6 +1138,7 @@ const crossOrigin = await req('/api/contact/', {
   body: JSON.stringify({ name: 'x', email: 'x@example.com', phone: '5555550123', message: 'x' }),
 });
 record('cross-origin submission is refused', crossOrigin.status === 403, `got ${crossOrigin.status}, expected 403`);
+}
 
 /* ── Sitemap quality ───────────────────────────────────────────────────── */
 if (env === 'production' && smIndex.status === 200) {
@@ -1177,7 +1186,7 @@ const warned = results.filter((r) => !r.ok && r.warn);
 console.log(`\n${BOLD}── What this cannot see ${'─'.repeat(36)}${RESET}`);
 for (const line of [
   'One pageview per visit — a double-count is only visible in Realtime',
-  'That a valid submission stores in KV — verify with staging data; email/Slack notification transport is pending and not configured',
+  'That an accepted CRM submission reaches the existing private CRM — verify separately with approved staging data',
   'Whether the analytics container is the client\'s own — fetch it and read it',
   'Whether a redirect target is the RIGHT page, only that it resolves',
   'How fast it FEELS — weight and blocking counts are the inputs, never a timing. ' +
