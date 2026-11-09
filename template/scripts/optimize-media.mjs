@@ -271,23 +271,27 @@ async function emitSocialTwins() {
    *
    * Found by adding the first photograph to a fresh template, which is the one
    * moment this path had never been exercised.
-   */
+  */
   const postsDir = path.join(ROOT, 'src/content/blog');
   const used = new Set();
-  for (const entry of await fs.readdir(postsDir).catch(() => [])) {
-    if (!entry.endsWith('.md')) continue;
-    const body = await fs.readFile(path.join(postsDir, entry), 'utf8');
-    const declared = /^image:\s*"([^"]+)"/m.exec(body)?.[1];
-    const name = declared && /\/img\/[^/]+\/(.+?)(?:-\d+)?\.webp$/.exec(declared)?.[1];
-    if (name) used.add(name);
+  const postFiles = (await walk(postsDir).catch(() => [])).filter((file) => file.endsWith('.md'));
+  for (const file of postFiles) {
+    const body = await fs.readFile(file, 'utf8');
+    const frontmatter = /^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)/.exec(body)?.[1] ?? '';
+    const imageField = /^image:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))\s*(?:#.*)?$/m.exec(frontmatter);
+    const declared = imageField?.slice(1).find(Boolean);
+    const key = declared && (/^\/img\//.test(declared)
+      ? /\/img\/(.+?)(?:-\d+)?\.webp$/i.exec(declared)?.[1]
+      : declared);
+    if (key) used.add(key.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''));
   }
 
   const sources = (await walk(path.join(SRC, 'blog')).catch(() => [])).filter((file) =>
-    used.has(path.basename(file, path.extname(file))),
+    used.has(path.relative(SRC, file).replace(/\\/g, '/').replace(/\.[^.]+$/, '')),
   );
 
   for (const file of sources) {
-    const name = path.basename(file, path.extname(file));
+    const name = path.relative(SRC, file).replace(/\\/g, '/').replace(/\.[^.]+$/, '');
     const dest = path.join(OUT, 'social', `${name}.jpg`);
     await fs.mkdir(path.dirname(dest), { recursive: true });
     if (!(await newerThan(dest, file))) {

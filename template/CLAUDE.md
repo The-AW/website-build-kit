@@ -45,9 +45,10 @@ and `npm run check:contact` compares them on every build. Never type a `tel:` or
 
 **`src/data/business.ts` is the only place business facts live.** Name, phone, address,
 hours, service areas, credentials — plus `locale`, `timeZone` and `schemaTypes`, whose
-defaults are deliberately neutral (`en`, `UTC`, `LocalBusiness`) rather than correct. Neutral
-is a prompt to set them; a plausible wrong value is not. The header, footer, every call-to-action
-and the JSON-LD all read from it. Never hard-code a phone number in a component.
+defaults (`en`, `UTC`, `Organization`) are scaffold values, not verified facts. Confirm the
+locale/time zone and the visible organization identity before using them; add a subtype such as
+`LocalBusiness` only when the relevant facts are verified and visible. The header, footer, every
+call-to-action and the JSON-LD all read from this file. Never hard-code a phone number in a component.
 
 **Content stays in version-controlled files.** No CMS is selected or installed; do not add
 PagesCMS or a `.pages.yml`. Cloudflare EmDash is a future possibility only, not a current
@@ -103,7 +104,7 @@ site-specific adapter to AW's existing private CRM; no email/Slack/Brevo notific
 mandatory. Astro switches to server output, but every non-API route must explicitly export
 `prerender = true` and API routes `prerender = false`. Cloudflare serves static assets first and
 runs only `/api/*` Worker-first; keep `not_found_handling: "404-page"`. The build refuses
-`forms.choice: "private_crm"` until `src/pages/api/leads.ts` and the adapter exist and the route
+`forms.choice: "private_crm"` until the site's lead API route and adapter exist and the handler
 calls `submitToExistingCrm()`. The local synthetic adapter test proves routing only, not hosted
 CRM or browser end-to-end behavior.
 
@@ -210,8 +211,11 @@ optional — the difference between a decision and an oversight is whether it wa
 
 ## Content
 
-Editing guide in `docs/content.md`. In short: posts are markdown in `src/content/blog/` with
-typed frontmatter — a bad edit fails the build rather than the page.
+Start with [`AGENTS.md`](AGENTS.md), which points here for durable project conventions. `docs/content.md`
+documents the Markdown frontmatter; [`docs/content-editing.md`](docs/content-editing.md) and
+[`docs/new-page-brief.md`](docs/new-page-brief.md) cover the ongoing no-CMS process and new-route intake.
+Posts are in `src/content/blog/`; H1, explicit `seoTitle`, and description are required and typed, so
+missing metadata or a bad edit fails the build instead of silently publishing a fallback.
 
 ## Do not
 

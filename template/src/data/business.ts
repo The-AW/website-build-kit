@@ -43,7 +43,7 @@ export const business = {
   description:
     'One or two sentences that would make sense read aloud on the phone. This becomes the ' +
     'default meta description and the Organization description in structured data.',
-  foundedYear: 2010,
+  foundedYear: null as number | null,
 
   phone: {
     /* What a visitor READS, in local convention. The only phone field a client
@@ -76,22 +76,29 @@ export const business = {
   },
 
   /** Used by LocalBusiness JSON-LD. Get them from Google Maps. */
-  geo: { latitude: 0, longitude: 0 },
+  geo: { latitude: null as number | null, longitude: null as number | null },
 
   hours: {
-    days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-    opens: '09:00',
-    closes: '17:00',
-    display: 'Mon – Fri · 9am – 5pm',
+    days: [] as string[],
+    opens: '',
+    closes: '',
+    display: '',
   },
 
-  priceRange: '$$',
+  priceRange: '',
 
   /**
    * schema.org types for the organisation node, most general first.
    *
-   * ⚠ SET THE SUBTYPE FOR THIS BUSINESS, or leave the two generic ones. The
-   * template shipped `HVACBusiness` hardcoded for two projects, so every site
+   * ⚠ The default is Organization only. Set a subtype only when the site really
+   *   represents that business and the required facts are public and verified.
+   *   The template once shipped `LocalBusiness` for every site, even when no
+   *   address or local presence was supplied. That was a specific false claim.
+   *
+   * A site may add a LocalBusiness subtype only after verifying its public facts.
+   * The builder requires a complete address before emitting one.
+   *
+   * The template previously shipped `HVACBusiness` hardcoded for two projects, so every site
    * built from it silently declared itself a heating and ventilation company
    * to Google — valid markup, clean build, wrong business.
    *
@@ -100,20 +107,23 @@ export const business = {
    * subtypes at https://schema.org/LocalBusiness — e.g. `Dentist`, `Plumber`,
    * `HealthClub`, `LegalService`. If nothing fits exactly, leave it out.
    */
-  schemaTypes: ['Organization', 'LocalBusiness'] as string[],
+  schemaTypes: ['Organization'] as string[],
 
   /**
-   * Logo path for structured data, relative to the site root, or null.
+   * Media-manifest key or emitted src for structured data, or null.
    *
    * Null by default because the template ships no brand assets, and a schema
    * `logo` pointing at a 404 is a warning in Search Console that nothing in a
-   * build would surface. Set it after `npm run media` puts the real file in
-   * public/img/brand/.
+   * build would surface. Set it only after `npm run media` has generated the
+   * real image and its manifest entry; otherwise leave it null.
    */
   logoPath: null as string | null,
 
   /** Drives areaServed in structured data, and the footer list. */
-  serviceAreas: ['Town', 'Neighbouring Town'],
+  serviceAreas: [] as string[],
+
+  /** Enable only after the site's actual service catalog and terms are reviewed. */
+  schemaOfferCatalog: false,
 
   serviceAreaSummary: 'Serving Town and the surrounding area.',
 

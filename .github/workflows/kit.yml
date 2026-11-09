@@ -166,9 +166,29 @@ jobs:
             console.log("ok:", join(root, found));
           '
 
+      # A temporary article is added and removed inside the test. It proves the
+      # content contract refuses missing metadata and that a valid article
+      # renders with a self-canonical, Article schema, local image/link targets,
+      # environment-appropriate indexability and a production sitemap entry.
+      - name: Content editing workflow still works
+        working-directory: template
+        run: npm run test:content
+
       - name: Template builds from clean
         working-directory: template
-        run: CI=true npm run build:staging
+        env:
+          CI: true
+          PUBLIC_SITE_ENV: staging
+          PUBLIC_SITE_URL: https://staging.content-workflow.invalid
+        run: |
+          # The untouched manifest intentionally refuses build:staging until a
+          # real site's host/repository/Worker targets are configured. CI tests
+          # source compilation only against a reserved non-routable host.
+          npm run build
+          node scripts/staging-headers.mjs
+          npm run check:copy
+          npm run check:alt
+          npm run check:sitemap
 
       - name: Template types
         working-directory: template

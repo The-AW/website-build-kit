@@ -24,6 +24,6 @@ export const GET: APIRoute = async (context) => {
       link: `/${post.id}/`,
       categories: post.data.categories,
     })),
-    customData: '<language>en-us</language>',
+    customData: `<language>${business.locale.replaceAll('_', '-').toLowerCase()}</language>`,
   });
 };
