@@ -231,6 +231,8 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
   const config = {
     "$schema": "../node_modules/wrangler/config-schema.json",
     name: result.worker,
+    workers_dev: false,
+    preview_urls: false,
     compatibility_date: COMPATIBILITY_DATE,
     assets: {
       directory: assetsDirectory,
@@ -244,6 +246,30 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
   if (validId(result.accountId)) config.account_id = result.accountId;
   if (runtimeEnabled) config.compatibility_flags = ['nodejs_compat'];
   return config;
+}
+
+export function validateWranglerDeployConfig(config, target) {
+  const errors = [];
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return ['selected Worker config must be a JSON object.'];
+  }
+  if (config.account_id !== target.accountId) {
+    errors.push(`account_id must match the manifest ${target.environment} account ID (${target.accountId}).`);
+  }
+  if (config.name !== target.worker) {
+    errors.push(`name must match the manifest ${target.environment} Worker (${target.worker}).`);
+  }
+  const routes = Array.isArray(config.routes) ? config.routes : [];
+  if (config.route !== undefined || routes.length !== 1 || routes[0]?.pattern !== target.hostname || routes[0]?.custom_domain !== true) {
+    errors.push(`routes must contain exactly one custom-domain route for ${target.hostname}, with no alternate route.`);
+  }
+  if (config.workers_dev !== false) {
+    errors.push('workers_dev must be false so the Worker is not exposed on an alternate workers.dev hostname.');
+  }
+  if (config.preview_urls !== false) {
+    errors.push('preview_urls must be false so the Worker is not exposed on an alternate preview hostname.');
+  }
+  return errors;
 }
 
 export function writeWranglerConfig(manifest, environment, cwd = process.cwd()) {

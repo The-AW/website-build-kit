@@ -4,14 +4,13 @@ Use this path for the next AW migrations. Each site lives in its own repository;
 
 ## 1. Pin and scaffold this fork
 
-Do not use `npm create website-build-kit@latest` or `npx degit` for an AW site: those fetch the upstream distribution, not this fork. Checkout the reviewed AW commit and run the local scaffolder. It copies only Git-tracked template files and stamps the exact commit into `package.json`; `.gitignore`, scripts and `package-lock.json` are included.
+Do not use `npm create website-build-kit@latest` or `npx degit` for an AW site: those fetch the upstream distribution, not this fork. After PR2 is merged, clone AW `master` and run this exact entry sequence; the clean checkout's current commit is stamped into the site `package.json`. The scaffolder copies only tracked template files, including `.gitignore`, scripts and `package-lock.json`.
 
 ```bash
-git clone https://github.com/The-AW/website-build-kit.git ~/coding/website-build-kit
-git -C ~/coding/website-build-kit fetch origin <REVIEWED_COMMIT>
-git -C ~/coding/website-build-kit checkout --detach <REVIEWED_COMMIT>
-node ~/coding/website-build-kit/scripts/scaffold-aw.mjs ~/coding/<site-repo>
-cd ~/coding/<site-repo>
+git clone --branch master https://github.com/The-AW/website-build-kit.git "$HOME/coding/website-build-kit"
+SITE_DIR="$HOME/coding/site-slug" # use a new, empty destination for this site's repository
+node "$HOME/coding/website-build-kit/scripts/scaffold-aw.mjs" "$SITE_DIR"
+cd "$SITE_DIR"
 ```
 
 Fill in `aw-migration.json` before any deploy. It records the WordPress source URL; separate staging and production hosts; repository, per-environment Cloudflare account/zone/Worker targets; route and media inventory paths; redirect exceptions; `forms.choice`; acceptance criteria; and a rollback snapshot, preserved WordPress origin and restore steps. Do not copy client assets or secrets into the kit. Builds refuse placeholder hosts/Workers and missing source/repository fields; after intake is complete, set `template` to `false`. Deploys also require real account/zone IDs and route/media inventories; production additionally requires recorded acceptance and an existing rollback snapshot.
@@ -29,7 +28,7 @@ npm run deploy:staging
 npm run verify -- https://<staging-host>
 ```
 
-Review the full route and media inventories before implementation. `inventories.media` defaults to `recon/media.csv` with columns `source_url,local_path,status,sha256,alt,usage` and a reviewed row for every source asset (or an explicit no-media row); `npm run media` separately writes the processed-image manifest. Keep `public/_redirects` empty until reviewed; every rule must match a `redirectExceptions` item with `source`, `destination`, `status` and `reason`. Preserve useful crawl, media, URL, redirect, accessibility and 404 checks. `aw-migration.json` is the host source of truth: build scripts refuse placeholders and conflicting `PUBLIC_SITE_URL` values. Generated `.aw/wrangler-staging.jsonc` and `.aw/wrangler-production.jsonc` use different Worker names and exact hostnames; the checked-in `wrangler.jsonc` is neutral and must not be deployed directly.
+Review the full route and media inventories before implementation. `inventories.media` defaults to `recon/media.csv` with columns `source_url,local_path,status,sha256,alt,usage` and a reviewed row for every source asset (or an explicit no-media row); `npm run media` separately writes the processed-image manifest. Keep `public/_redirects` empty until reviewed; every rule must match a `redirectExceptions` item with `source`, `destination`, `status` and `reason`. Preserve useful crawl, media, URL, redirect, accessibility and 404 checks. `aw-migration.json` is the host source of truth: build scripts refuse placeholders and conflicting `PUBLIC_SITE_URL` values. Generated `.aw/wrangler-staging.jsonc` and `.aw/wrangler-production.jsonc` use different Worker names and exact hostnames, set `workers_dev: false` and `preview_urls: false`, and retain only their intended custom-domain route. Immediately before invoking Wrangler, deploy validates the exact selected file again, including `dist/server/wrangler.json` if runtime is enabled. The checked-in `wrangler.jsonc` is neutral and must not be deployed directly.
 
 The default is static Astro plus Cloudflare Workers Static Assets: no Astro Worker adapter, contact API, Turnstile key, KV binding or notification service. The build gate checks staging page-meta/header/robots noindex, absence of a staging sitemap, and environment-specific canonicals; production requires its own robots/sitemap host and a real 404. Optional modules do not block a static migration.
 

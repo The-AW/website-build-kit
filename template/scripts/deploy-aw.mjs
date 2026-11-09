@@ -1,6 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { readMigrationManifest, validateMigrationManifest } from './lib/aw-migration.mjs';
+import {
+  readMigrationManifest,
+  validateMigrationManifest,
+  validateWranglerDeployConfig,
+} from './lib/aw-migration.mjs';
 
 const env = process.argv[2];
 const flags = new Set(process.argv.slice(3));
@@ -61,15 +65,28 @@ try {
 } catch {
   refuse(`${configPath} is not valid JSON.`);
 }
-const routes = config.routes ?? [];
-if (config.name !== target.worker || routes.length !== 1 || routes[0].pattern !== target.hostname || routes[0].custom_domain !== true) {
-  refuse(`${configPath} does not match the manifest's ${env} Worker/host target.`);
+const sourceConfigErrors = validateWranglerDeployConfig(config, target);
+if (sourceConfigErrors.length) {
+  refuse(`${configPath} does not match the manifest's ${env} deploy target.`, sourceConfigErrors);
 }
 
 const wranglerConfig = manifest.forms.choice === 'private_crm'
   ? 'dist/server/wrangler.json'
   : configPath;
 if (!existsSync(wranglerConfig)) refuse(`expected generated deploy config ${wranglerConfig} is missing.`);
+let selectedConfig;
+try {
+  selectedConfig = JSON.parse(readFileSync(wranglerConfig, 'utf8'));
+} catch {
+  refuse(`selected deploy config ${wranglerConfig} is not valid JSON.`);
+}
+const selectedConfigErrors = validateWranglerDeployConfig(selectedConfig, target);
+if (selectedConfigErrors.length) {
+  refuse(`selected deploy config ${wranglerConfig} does not match the manifest's ${env} target.`, selectedConfigErrors);
+}
+
+/* Validate the exact file passed to Wrangler above, after Astro may have emitted
+   a runtime config, and immediately before the deploy call below. */
 const deployArgs = ['--no-install', 'wrangler', 'deploy', '--config', wranglerConfig];
 if (dryRun) deployArgs.push('--dry-run');
 run(npx, deployArgs, dryRun ? `${env} Wrangler dry-run` : `${env} Wrangler deploy`);

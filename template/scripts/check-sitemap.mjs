@@ -60,6 +60,19 @@ const hasNoindex = (html) =>
   [...html.matchAll(/<meta\b[^>]*>/gi)].some((match) =>
     attribute(match[0], 'name').toLowerCase() === 'robots' && /\bnoindex\b/i.test(attribute(match[0], 'content')),
   );
+const hasGlobalNoindexHeader = (headers) => {
+  let rule = '';
+  for (const line of headers.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    if (/^\s*#/.test(line)) continue;
+    if (!/^\s/.test(line)) {
+      rule = line.trim();
+      continue;
+    }
+    if (rule === '/*' && /^\s+X-Robots-Tag:\s*noindex\b/i.test(line)) return true;
+  }
+  return false;
+};
 const routeFor = (file) =>
   ('/' + relative(root, file).split(sep).join('/')
     .replace(/index\.html$/, '')
@@ -114,6 +127,8 @@ if (environment === 'staging') {
   if (!sitemapFiles.includes('sitemap-index.xml')) add('Production build must emit sitemap-index.xml.');
   if (!robots) add('Production build must include robots.txt.');
   if (!/^Allow:\s*\/\s*$/mi.test(robots)) add('Production robots.txt must include "Allow: /".');
+  const headers = existsSync(headersPath) ? readFileSync(headersPath, 'utf8') : '';
+  if (hasGlobalNoindexHeader(headers)) add('Production _headers must not globally apply X-Robots-Tag: noindex.');
   const sitemapDirectives = robots.split(/\r?\n/).map((line) => line.trim()).filter((line) => /^Sitemap\s*:/i.test(line));
   const expectedSitemap = `${expectedSiteUrl?.replace(/\/$/, '')}/sitemap-index.xml`;
   if (sitemapDirectives.length !== 1 || sitemapDirectives[0]?.replace(/^Sitemap\s*:\s*/i, '') !== expectedSitemap) {

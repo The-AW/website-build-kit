@@ -41,6 +41,12 @@ if (config.name !== target.worker) {
 if (routes.length !== 1 || routes[0]?.pattern !== target.hostname || routes[0]?.custom_domain !== true) {
   fail(`${configPath} does not target only the manifest's ${env} hostname ${target.hostname}.`);
 }
+if (config.workers_dev !== false) {
+  fail(`${configPath} must set workers_dev: false to prevent an alternate workers.dev hostname.`);
+}
+if (config.preview_urls !== false) {
+  fail(`${configPath} must set preview_urls: false to prevent alternate preview hostnames.`);
+}
 if (manifest.forms.choice === 'none' && (config.kv_namespaces?.length || config.bindings?.some((binding) => binding.type === 'kv_namespace'))) {
   fail('static-only migrations must not carry KV bindings.');
 }

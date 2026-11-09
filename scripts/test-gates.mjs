@@ -156,6 +156,9 @@ const awManifest = (overrides = {}) => JSON.stringify({
 }, null, 2);
 const awConfig = (env) => JSON.stringify({
   name: `client-${env}`,
+  account_id: TEST_ACCOUNT_ID,
+  workers_dev: false,
+  preview_urls: false,
   routes: [{ pattern: env === 'staging' ? 'staging.client.co.uk' : 'client.co.uk', custom_domain: true }],
   assets: { directory: '/tmp/dist', not_found_handling: '404-page' },
 });
@@ -174,6 +177,28 @@ gate('production build, production Worker and host', {
   files: { 'aw-migration.json': awManifest(), '.aw/wrangler-production.jsonc': awConfig('production') },
   env: { PUBLIC_SITE_ENV: 'production' },
   expect: 0,
+});
+
+gate('workers.dev alternate hostname enabled — must refuse', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest(),
+    '.aw/wrangler-staging.jsonc': JSON.stringify({ ...JSON.parse(awConfig('staging')), workers_dev: true }),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'must set workers_dev: false',
+});
+
+gate('preview alternate hostname enabled — must refuse', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest(),
+    '.aw/wrangler-staging.jsonc': JSON.stringify({ ...JSON.parse(awConfig('staging')), preview_urls: true }),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'must set preview_urls: false',
 });
 
 gate('production build pointing at staging config — must refuse', {
@@ -316,6 +341,42 @@ gate('manifest absent — refuses legibly', {
 
 describe('deploy-aw production guard');
 
+const runtimeDeployFiles = (runtimeConfig) => ({
+  'aw-migration.json': awManifest({ forms: { choice: 'private_crm', crmAdapter: 'src/lib/crm-adapter.mjs' } }),
+  '.aw/wrangler-staging.jsonc': awConfig('staging'),
+  'src/pages/api/contact.ts': 'export async function POST() { return submitToExistingCrm({}); }\n',
+  'src/lib/crm-adapter.mjs': 'export async function submitToExistingCrm() { return new Response("ok"); }\n',
+  'recon/urls.txt': '/\n',
+  'recon/media.csv': 'source_url,local_path,status,sha256,alt,usage\nhttps://old-client.org/logo.png,media/logo.png,downloaded,0123456789abcdef,Logo,header\n',
+  'public/_redirects': '# no redirects selected for this fixture\n',
+  'scripts/build.mjs': [
+    "import { mkdirSync, writeFileSync } from 'node:fs';",
+    "mkdirSync('dist/server', { recursive: true });",
+    `writeFileSync('dist/server/wrangler.json', ${JSON.stringify(JSON.stringify(runtimeConfig))});`,
+  ].join('\n'),
+});
+
+let runtimeNpxDirectory = '';
+if (process.platform !== 'win32') {
+  runtimeNpxDirectory = mkdtempSync(join(tmpdir(), 'kit-runtime-deploy-npx-'));
+  const stub = join(runtimeNpxDirectory, 'npx');
+  writeFileSync(stub, [
+    '#!/bin/sh',
+    'if [ "$1" = "--no-install" ] && [ "$2" = "wrangler" ] && [ "$3" = "whoami" ]; then',
+    '  printf "%s\\n" "$*" >> "$PWD/wrangler-invocations.log"',
+    '  exit 0',
+    'fi',
+    'if [ "$1" = "--no-install" ] && [ "$2" = "wrangler" ] && [ "$3" = "deploy" ]; then',
+    '  printf "%s\\n" "$*" >> "$PWD/wrangler-invocations.log"',
+    '  exit 0',
+    'fi',
+    'echo "unexpected Wrangler invocation: $*" >&2',
+    'exit 77',
+    '',
+  ].join('\n'));
+  chmodSync(stub, 0o755);
+}
+
 gate('production write without explicit command guard — must refuse before build', {
   script: 'deploy-aw.mjs',
   args: ['production'],
@@ -414,6 +475,76 @@ gate('production deploy requires an existing rollback snapshot', {
   expect: 1,
   contains: 'existing rollback snapshot',
 });
+
+describe('deploy-aw selected runtime config');
+
+if (process.platform === 'win32') {
+  results.push({
+    gate: currentGate,
+    label: 'stubbed Wrangler runtime-config cases',
+    ok: true,
+    skipped: true,
+    detail: 'skipped on Windows — an npx PATH shim does not stand in for npx.cmd',
+  });
+} else {
+  const runtimeNpxEnv = { PATH: `${runtimeNpxDirectory}:${process.env.PATH}` };
+  const expectedRuntimeConfig = {
+    name: 'client-staging',
+    account_id: TEST_ACCOUNT_ID,
+    workers_dev: false,
+    preview_urls: false,
+    routes: [{ pattern: 'staging.client.co.uk', custom_domain: true }],
+    assets: { directory: '/tmp/dist/client', binding: 'ASSETS', not_found_handling: 'none' },
+  };
+
+  gate('correct source config cannot mask wrong generated runtime config — must refuse before deploy', {
+    script: 'deploy-aw.mjs',
+    args: ['staging', '--dry-run'],
+    env: runtimeNpxEnv,
+    files: runtimeDeployFiles({
+      ...expectedRuntimeConfig,
+      name: 'client-production',
+      account_id: 'fedcba0987654321fedcba0987654321',
+      workers_dev: true,
+      preview_urls: true,
+      routes: [
+        { pattern: 'client.co.uk', custom_domain: true },
+        { pattern: 'alt.client.co.uk', custom_domain: true },
+      ],
+    }),
+    expect: 1,
+    contains: 'account_id must match the manifest staging account ID',
+    then: (dir, out) => {
+      for (const expected of [
+        'name must match the manifest staging Worker',
+        'routes must contain exactly one custom-domain route for staging.client.co.uk',
+        'workers_dev must be false',
+        'preview_urls must be false',
+      ]) {
+        if (!out.includes(expected)) return `runtime-config refusal omitted ${expected}`;
+      }
+      const calls = readFileSync(join(dir, 'wrangler-invocations.log'), 'utf8');
+      return calls.includes('wrangler deploy') ? 'called Wrangler deploy after rejecting the selected runtime config' : null;
+    },
+  });
+
+  gate('matching generated runtime config is the file passed to Wrangler dry-run', {
+    script: 'deploy-aw.mjs',
+    args: ['staging', '--dry-run'],
+    env: runtimeNpxEnv,
+    files: runtimeDeployFiles(expectedRuntimeConfig),
+    expect: 0,
+    contains: 'no live Worker was changed',
+    then: (dir) => {
+      const calls = readFileSync(join(dir, 'wrangler-invocations.log'), 'utf8').trim().split(/\r?\n/);
+      return calls.length === 2 && calls[1] === '--no-install wrangler deploy --config dist/server/wrangler.json --dry-run'
+        ? null
+        : `expected dry-run against dist/server/wrangler.json, got ${calls.join(' | ')}`;
+    },
+  });
+
+  rmSync(runtimeNpxDirectory, { recursive: true, force: true });
+}
 
 /* ────────────────────────────────────────────────────────────────────────
  * check-secrets — needs `wrangler`, so it gets a stub on PATH
@@ -681,15 +812,29 @@ gate('staging missing robots meta noindex — must refuse', {
   contains: '/about/',
 });
 
-gate('production without a sitemap — must refuse', {
-  script: 'check-sitemap.mjs',
-  env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+  gate('production without a sitemap — must refuse', {
+    script: 'check-sitemap.mjs',
+    env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
   files: {
     'dist/client/robots.txt': productionRobots(),
     'dist/client/index.html': page(null, 'https://client.co.uk/'),
   },
   expect: 1,
   contains: 'Production build must emit a sitemap',
+});
+
+gate('production global X-Robots-Tag noindex — must refuse', {
+  script: 'check-sitemap.mjs',
+  env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+  files: {
+    'dist/client/sitemap-index.xml': sitemapIndexXml(),
+    'dist/client/sitemap-0.xml': sitemapXml(['/']),
+    'dist/client/robots.txt': productionRobots(),
+    'dist/client/index.html': page(null, 'https://client.co.uk/'),
+    'dist/client/_headers': '/*\n  X-Robots-Tag: noindex\n',
+  },
+  expect: 1,
+  contains: 'Production _headers must not globally apply X-Robots-Tag: noindex',
 });
 
   gate('a production canonical using staging host — must refuse', {

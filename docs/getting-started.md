@@ -15,11 +15,14 @@ Verify: open any project in Claude Code and type `/` — `website-build` should 
 
 ## Scaffold an AW migration from this fork
 
-Do not use `npm create website-build-kit@latest` or `npx degit` for AW work: those fetch upstream, not the AW fork. Checkout the reviewed AW commit in a clean kit clone and run the local script:
+Do not use `npm create website-build-kit@latest` or `npx degit` for AW work: those fetch upstream, not the AW fork. After PR2 merges, reuse the clean kit clone from the install section, fast-forward it to AW `master`, then run the local scaffolder. It stamps that checkout's exact commit into the site package:
 
 ```bash
-node ~/coding/website-build-kit/scripts/scaffold-aw.mjs ~/coding/<site-repo>
-cd ~/coding/<site-repo>
+git -C "$HOME/coding/website-build-kit" checkout master
+git -C "$HOME/coding/website-build-kit" pull --ff-only origin master
+SITE_DIR="$HOME/coding/site-slug" # use a new, empty destination for this site's repository
+node "$HOME/coding/website-build-kit/scripts/scaffold-aw.mjs" "$SITE_DIR"
+cd "$SITE_DIR"
 ```
 
 It copies only tracked template files, including `.gitignore`, scripts and `package-lock.json`, then records the kit commit in the site's `package.json`. It refuses a dirty template, a non-empty destination, or missing scaffold essentials. Keep each site in its own repository; do not copy client assets, URLs, credentials or secrets into the kit.
