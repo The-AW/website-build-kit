@@ -102,7 +102,7 @@ function newest(files) {
  * for navigation or boilerplate.
  *
  *   '/pricing/': ['src/data/pricing.json'],
- *   '/contact/': ['src/pages/api/contact.ts'],
+ *   '/contact/': ['src/pages/api/leads.ts'],
  */
 const EXTRA_SOURCES = {};
 

@@ -1067,18 +1067,21 @@ if (fontRes.status !== 404) {
   notes.push('checked /fonts/ for an immutable rule — verify a real font URL by hand');
 }
 
-let contactEnabled = false;
+let contactChoice = 'legacy';
 try {
-  contactEnabled = JSON.parse(readFileSync('aw-migration.json', 'utf8')).forms?.choice === 'private_crm';
+  const choice = JSON.parse(readFileSync('aw-migration.json', 'utf8')).forms?.choice;
+  if (choice === 'none' || choice === 'private_crm') contactChoice = choice;
 } catch {
   // Older, non-AW projects without the AW manifest retain the established route probes.
-  contactEnabled = true;
 }
 
 /* ── Form ────────────────────────────────────────────────────────────────── */
-if (!contactEnabled) {
+if (contactChoice === 'none') {
   section('Optional contact module');
-  record('contact runtime is disabled', true, 'forms.choice is none; no /api/contact probes were sent');
+  record('contact runtime is disabled', true, 'forms.choice is none; no /api/leads probes were sent');
+} else if (contactChoice === 'private_crm') {
+  section('Optional contact API');
+  notes.push('Site-specific /api/leads checks are deferred: this generic verifier does not POST to a CRM; use an approved staging test and record the evidence.');
 } else {
   section('Form (non-destructive submissions only)');
 

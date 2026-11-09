@@ -80,7 +80,7 @@ try {
 } catch {
   refuse(`selected deploy config ${wranglerConfig} is not valid JSON.`);
 }
-const selectedConfigErrors = validateWranglerDeployConfig(selectedConfig, target);
+const selectedConfigErrors = validateWranglerDeployConfig(selectedConfig, target, { requireWorkerEntrypoint: true });
 if (selectedConfigErrors.length) {
   refuse(`selected deploy config ${wranglerConfig} does not match the manifest's ${env} target.`, selectedConfigErrors);
 }

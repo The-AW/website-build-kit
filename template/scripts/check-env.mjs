@@ -47,6 +47,17 @@ if (config.workers_dev !== false) {
 if (config.preview_urls !== false) {
   fail(`${configPath} must set preview_urls: false to prevent alternate preview hostnames.`);
 }
+if (config.assets?.not_found_handling !== '404-page') {
+  fail(`${configPath} must preserve a real 404 with not_found_handling: 404-page.`);
+}
+if (manifest.forms.choice === 'private_crm') {
+  if (config.assets?.binding !== 'ASSETS') {
+    fail(`${configPath} must bind assets as ASSETS for prerendered pages in contact runtime mode.`);
+  }
+  if (!Array.isArray(config.assets?.run_worker_first) || config.assets.run_worker_first.length !== 1 || config.assets.run_worker_first[0] !== '/api/*') {
+    fail(`${configPath} must route only /api/* to the Worker before static asset lookup.`);
+  }
+}
 if (manifest.forms.choice === 'none' && (config.kv_namespaces?.length || config.bindings?.some((binding) => binding.type === 'kv_namespace'))) {
   fail('static-only migrations must not carry KV bindings.');
 }

@@ -154,13 +154,17 @@ const awManifest = (overrides = {}) => JSON.stringify({
   rollback: { snapshotPath: '', wordpressOrigin: '', restoreSteps: [], cloudwaysRetirement: { requested: false, backupVerified: false, sharedServerDependenciesChecked: false } },
   ...overrides,
 }, null, 2);
-const awConfig = (env) => JSON.stringify({
+const awConfig = (env, runtime = false) => JSON.stringify({
   name: `client-${env}`,
   account_id: TEST_ACCOUNT_ID,
   workers_dev: false,
   preview_urls: false,
   routes: [{ pattern: env === 'staging' ? 'staging.client.co.uk' : 'client.co.uk', custom_domain: true }],
-  assets: { directory: '/tmp/dist', not_found_handling: '404-page' },
+  assets: {
+    directory: '/tmp/dist',
+    ...(runtime ? { binding: 'ASSETS', run_worker_first: ['/api/*'] } : {}),
+    not_found_handling: '404-page',
+  },
 });
 
 describe('check-env');
@@ -317,7 +321,20 @@ gate('KV-only contact draft cannot be selected as private CRM', {
   },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 1,
-  contains: 'src/pages/api/contact.ts is missing',
+  contains: 'src/pages/api/leads.ts is missing',
+});
+
+gate('private CRM build refuses config that does not route API to Worker with static 404 handling', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest({ forms: { choice: 'private_crm', crmAdapter: 'src/lib/crm-adapter.mjs' } }),
+    '.aw/wrangler-staging.jsonc': awConfig('staging'),
+    'src/pages/api/leads.ts': 'export const prerender = false;\nexport async function POST() { return submitToExistingCrm({}); }\n',
+    'src/lib/crm-adapter.mjs': 'export async function submitToExistingCrm() { return new Response("ok"); }\n',
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'must bind assets as ASSETS',
 });
 
 gate('static target carries an accidental KV binding — must refuse', {
@@ -329,6 +346,33 @@ gate('static target carries an accidental KV binding — must refuse', {
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 1,
   contains: 'must not carry KV bindings',
+});
+
+gate('static target without a real 404 handler — must refuse', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest(),
+    '.aw/wrangler-staging.jsonc': JSON.stringify({ ...JSON.parse(awConfig('staging')), assets: { directory: '/tmp/dist', not_found_handling: 'none' } }),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'not_found_handling: 404-page',
+});
+
+gate('hybrid runtime refuses Worker-first routing beyond API paths', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': awManifest({ forms: { choice: 'private_crm', crmAdapter: 'src/lib/crm-adapter.mjs' } }),
+    '.aw/wrangler-staging.jsonc': JSON.stringify({
+      ...JSON.parse(awConfig('staging', true)),
+      assets: { ...JSON.parse(awConfig('staging', true)).assets, run_worker_first: ['/api/*', '/admin/*'] },
+    }),
+    'src/pages/api/leads.ts': 'export const prerender = false;\nexport async function POST() { return submitToExistingCrm({}); }\n',
+    'src/lib/crm-adapter.mjs': 'export async function submitToExistingCrm() { return new Response("ok"); }\n',
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'must route only /api/*',
 });
 
 gate('manifest absent — refuses legibly', {
@@ -343,8 +387,8 @@ describe('deploy-aw production guard');
 
 const runtimeDeployFiles = (runtimeConfig) => ({
   'aw-migration.json': awManifest({ forms: { choice: 'private_crm', crmAdapter: 'src/lib/crm-adapter.mjs' } }),
-  '.aw/wrangler-staging.jsonc': awConfig('staging'),
-  'src/pages/api/contact.ts': 'export async function POST() { return submitToExistingCrm({}); }\n',
+  '.aw/wrangler-staging.jsonc': awConfig('staging', true),
+  'src/pages/api/leads.ts': 'export const prerender = false;\nexport async function POST() { return submitToExistingCrm({}); }\n',
   'src/lib/crm-adapter.mjs': 'export async function submitToExistingCrm() { return new Response("ok"); }\n',
   'recon/urls.txt': '/\n',
   'recon/media.csv': 'source_url,local_path,status,sha256,alt,usage\nhttps://old-client.org/logo.png,media/logo.png,downloaded,0123456789abcdef,Logo,header\n',
@@ -490,11 +534,17 @@ if (process.platform === 'win32') {
   const runtimeNpxEnv = { PATH: `${runtimeNpxDirectory}:${process.env.PATH}` };
   const expectedRuntimeConfig = {
     name: 'client-staging',
+    main: './dist/server/entry.mjs',
     account_id: TEST_ACCOUNT_ID,
     workers_dev: false,
     preview_urls: false,
     routes: [{ pattern: 'staging.client.co.uk', custom_domain: true }],
-    assets: { directory: '/tmp/dist/client', binding: 'ASSETS', not_found_handling: 'none' },
+    assets: {
+      directory: '/tmp/dist/client',
+      binding: 'ASSETS',
+      run_worker_first: ['/api/*'],
+      not_found_handling: '404-page',
+    },
   };
 
   gate('correct source config cannot mask wrong generated runtime config — must refuse before deploy', {
@@ -511,6 +561,7 @@ if (process.platform === 'win32') {
         { pattern: 'client.co.uk', custom_domain: true },
         { pattern: 'alt.client.co.uk', custom_domain: true },
       ],
+      assets: { ...expectedRuntimeConfig.assets, run_worker_first: [], not_found_handling: 'none' },
     }),
     expect: 1,
     contains: 'account_id must match the manifest staging account ID',
@@ -520,6 +571,8 @@ if (process.platform === 'win32') {
         'routes must contain exactly one custom-domain route for staging.client.co.uk',
         'workers_dev must be false',
         'preview_urls must be false',
+        'assets.run_worker_first must be exactly',
+        'assets.not_found_handling must be 404-page',
       ]) {
         if (!out.includes(expected)) return `runtime-config refusal omitted ${expected}`;
       }
@@ -528,7 +581,7 @@ if (process.platform === 'win32') {
     },
   });
 
-  gate('matching generated runtime config is the file passed to Wrangler dry-run', {
+gate('matching generated runtime config is the file passed to Wrangler dry-run', {
     script: 'deploy-aw.mjs',
     args: ['staging', '--dry-run'],
     env: runtimeNpxEnv,
@@ -540,6 +593,19 @@ if (process.platform === 'win32') {
       return calls.length === 2 && calls[1] === '--no-install wrangler deploy --config dist/server/wrangler.json --dry-run'
         ? null
         : `expected dry-run against dist/server/wrangler.json, got ${calls.join(' | ')}`;
+    },
+  });
+
+  gate('selected runtime config without Worker entrypoint refuses before deploy', {
+    script: 'deploy-aw.mjs',
+    args: ['staging', '--dry-run'],
+    env: runtimeNpxEnv,
+    files: runtimeDeployFiles({ ...expectedRuntimeConfig, main: undefined }),
+    expect: 1,
+    contains: 'selected server deploy config must include the Astro Worker main entrypoint',
+    then: (dir) => {
+      const calls = readFileSync(join(dir, 'wrangler-invocations.log'), 'utf8');
+      return calls.includes('wrangler deploy') ? 'called Wrangler deploy after rejecting the missing entrypoint' : null;
     },
   });
 
@@ -727,6 +793,16 @@ const page = (robots, canonical = 'https://client.co.uk/', body = '<p>hello</p>'
 const productionRobots = (host = 'https://client.co.uk') =>
   `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${host}/sitemap-index.xml\n`;
 
+const hybridSourceFiles = {
+  'aw-migration.json': awManifest({ forms: { choice: 'private_crm', crmAdapter: 'src/lib/crm-adapter.mjs' } }),
+  'src/pages/index.astro': '---\nexport const prerender = true;\n---\n',
+  'src/pages/contact.astro': '---\nexport const prerender = true;\n---\n',
+  'src/pages/404.astro': '---\nexport const prerender = true;\n---\n',
+  'src/pages/robots.txt.ts': 'export const prerender = true;\n',
+  'src/pages/rss.xml.ts': 'export const prerender = true;\n',
+  'src/pages/api/leads.ts': 'export const prerender = false;\nexport async function POST() { return new Response("synthetic"); }\n',
+};
+
 describe('check-sitemap');
 
 gate('no dist — refuses', {
@@ -783,6 +859,67 @@ gate('staging missing robots meta noindex — must refuse', {
   },
   expect: 1,
   contains: 'Every staging HTML page must carry a robots noindex meta tag',
+});
+
+gate('hybrid staging keeps pages static and staging noindex gates intact', {
+  script: 'check-sitemap.mjs',
+  env: { PUBLIC_SITE_ENV: 'staging', PUBLIC_SITE_URL: 'https://staging.client.co.uk' },
+  files: {
+    ...hybridSourceFiles,
+    'dist/client/index.html': page('noindex, nofollow', 'https://staging.client.co.uk/'),
+    'dist/client/contact/index.html': page('noindex, nofollow', 'https://staging.client.co.uk/contact/'),
+    'dist/client/404.html': page('noindex, nofollow', 'https://staging.client.co.uk/404/'),
+    'dist/client/robots.txt': 'User-agent: *\nDisallow: /\n',
+    'dist/client/_headers': '/*\n  X-Robots-Tag: noindex\n',
+  },
+  expect: 0,
+  contains: 'staging is noindex',
+});
+
+gate('hybrid production retains static sitemap, robots, canonical and 404 output', {
+  script: 'check-sitemap.mjs',
+  env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+  files: {
+    ...hybridSourceFiles,
+    'dist/client/sitemap-index.xml': sitemapIndexXml(),
+    'dist/client/sitemap-0.xml': sitemapXml(['/', '/contact/']),
+    'dist/client/robots.txt': productionRobots(),
+    'dist/client/index.html': page(null, 'https://client.co.uk/'),
+    'dist/client/contact/index.html': page(null, 'https://client.co.uk/contact/'),
+    'dist/client/404.html': page('noindex, nofollow', 'https://client.co.uk/404/'),
+  },
+  expect: 0,
+  contains: 'production sitemap, robots and canonicals',
+});
+
+gate('hybrid contact mode refuses an on-demand content page', {
+  script: 'check-sitemap.mjs',
+  env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+  files: {
+    ...hybridSourceFiles,
+    'src/pages/contact.astro': '---\n---\n',
+    'dist/client/sitemap-index.xml': sitemapIndexXml(),
+    'dist/client/sitemap-0.xml': sitemapXml(['/']),
+    'dist/client/robots.txt': productionRobots(),
+    'dist/client/index.html': page(null, 'https://client.co.uk/'),
+  },
+  expect: 1,
+  contains: 'contact.astro must explicitly export prerender = true',
+});
+
+gate('hybrid contact mode refuses an API route that is prerendered as a file', {
+  script: 'check-sitemap.mjs',
+  env: { PUBLIC_SITE_ENV: 'production', PUBLIC_SITE_URL: 'https://client.co.uk' },
+  files: {
+    ...hybridSourceFiles,
+    'src/pages/api/leads.ts': 'export const prerender = true;\nexport async function POST() { return new Response("synthetic"); }\n',
+    'dist/client/sitemap-index.xml': sitemapIndexXml(),
+    'dist/client/sitemap-0.xml': sitemapXml(['/']),
+    'dist/client/robots.txt': productionRobots(),
+    'dist/client/index.html': page(null, 'https://client.co.uk/'),
+  },
+  expect: 1,
+  contains: 'api/leads.ts must explicitly export prerender = false',
 });
 
   gate('sitemap and noindex agree', {
