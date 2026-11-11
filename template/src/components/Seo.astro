@@ -10,6 +10,7 @@ import { business } from '../data/business';
 import manifest from '../data/image-manifest.json';
 import { toOpenGraphLocale } from '../lib/seo-locale';
 import { hasConfiguredText } from '../lib/structured-data';
+import { renderCurrentYear } from '../lib/current-year';
 
 type ManifestEntry = { src: string; width: number; height: number };
 const images = manifest as Record<string, ManifestEntry>;
@@ -70,6 +71,7 @@ const {
   noindex = false,
 } = Astro.props;
 
+const resolvedTitle = renderCurrentYear(title);
 const canonicalUrl = new URL(canonical ?? Astro.url.pathname, Astro.site).href;
 const card = socialCard(image);
 const imageUrl = card ? new URL(card.src, Astro.site).href : null;
@@ -84,7 +86,7 @@ const robots = blockIndexing
   : 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1';
 ---
 
-<title>{title}</title>
+<title>{resolvedTitle}</title>
 <meta name="description" content={description} />
 <meta name="robots" content={robots} />
 <link rel="canonical" href={canonicalUrl} />
@@ -92,7 +94,7 @@ const robots = blockIndexing
 <meta property="og:type" content={type} />
 {ogLocale && <meta property="og:locale" content={ogLocale} />}
 {hasConfiguredText(business.name) && <meta property="og:site_name" content={business.name} />}
-<meta property="og:title" content={title} />
+<meta property="og:title" content={resolvedTitle} />
 <meta property="og:description" content={description} />
 <meta property="og:url" content={canonicalUrl} />
 {
@@ -110,7 +112,7 @@ const robots = blockIndexing
 {updatedAt && <meta property="article:modified_time" content={updatedAt.toISOString()} />}
 
 <meta name="twitter:card" content={imageUrl ? 'summary_large_image' : 'summary'} />
-<meta name="twitter:title" content={title} />
+<meta name="twitter:title" content={resolvedTitle} />
 <meta name="twitter:description" content={description} />
 {imageUrl && <meta name="twitter:image" content={imageUrl} />}
 

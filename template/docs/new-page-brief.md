@@ -11,6 +11,7 @@ Use this for a new route; the site's owner may answer all fields in one message.
 | Visible H1 and body copy/approved outline | |
 | Meta title | Required; suggestion is optional and must be approved. |
 | Meta description | Required; suggestion is optional and must be approved. |
+| Current-year wording | For an evergreen page that intentionally shows the current year in both title and H1, use `[year]`; the SEO and `PageHero` components resolve it. For a custom H1, call `renderCurrentYear()` from `src/lib/current-year.ts`. Leave historical, model and publication years literal. |
 | Category/collection and navigation | Existing route(s), or explicit instruction to add one. |
 | Primary image | Original/source/provenance, filename, actual dimensions, alt text or reason for `alt=""`. |
 | Author and dates | Real author/profile and actual publication/modification time, only where relevant. |

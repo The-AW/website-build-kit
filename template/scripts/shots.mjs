@@ -42,6 +42,7 @@
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 import puppeteer from 'puppeteer';
 
@@ -84,6 +85,14 @@ if (!side) {
 }
 
 const BASE = (host ?? process.env.PUBLIC_SITE_URL ?? 'http://localhost:8788').replace(/\/$/, '');
+const sourceCommit = (() => {
+  try { return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); }
+  catch { return ''; }
+})();
+const sourceWorkingTreeClean = (() => {
+  try { return execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length === 0; }
+  catch { return null; }
+})();
 
 /*
  * The old site's inventory, when there is one. Comment lines carry the counts
@@ -188,9 +197,30 @@ const SETTLE = async () => {
     step();
   });
   await Promise.all([...document.images].map((img) => img.decode().catch(() => {})));
+  const images = [...document.images].map((img) => {
+    const rect = img.getBoundingClientRect();
+    const style = getComputedStyle(img);
+    let src = img.currentSrc || img.src;
+    try {
+      const parsed = new URL(src, location.href);
+      src = `${parsed.origin}${parsed.pathname}`;
+    } catch { /* retain the browser-reported source when it is not a URL */ }
+    return {
+      src,
+      alt: img.alt,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      renderedWidth: Math.round(rect.width * 100) / 100,
+      renderedHeight: Math.round(rect.height * 100) / 100,
+      aspectRatio: rect.height ? Math.round((rect.width / rect.height) * 10000) / 10000 : null,
+      objectFit: style.objectFit,
+      objectPosition: style.objectPosition,
+    };
+  });
   return {
     background: getComputedStyle(document.body).backgroundColor,
     height: document.documentElement.scrollHeight,
+    images,
   };
 };
 
@@ -279,7 +309,7 @@ try {
 
         await page.screenshot({ path: `${dir}/${file}`, fullPage: true });
         if (scale !== viewport.scale) await page.setViewport(vp);
-        captured.push({ route, slug, viewport: viewport.name, file, status, height: state.height, scale, broken });
+        captured.push({ route, slug, viewport: viewport.name, file, status, height: state.height, scale, images: state.images, broken });
 
         const note = broken.length ? `  ${YELLOW}${broken.length} failed request(s)${RESET}` : '';
         console.log(`  ${GREEN}✓${RESET} ${viewport.name.padEnd(7)} ${route}${note}`);
@@ -305,6 +335,8 @@ writeFileSync(
       side,
       origin: BASE,
       capturedAt: new Date().toISOString(),
+      sourceCommit,
+      sourceWorkingTreeClean,
       routeSource: source,
       viewports: VIEWPORTS,
       captured,

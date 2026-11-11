@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { getPosts } from '../lib/posts';
 import { business } from '../data/business';
 import { site } from '../data/site';
+import { renderCurrentYear } from '../lib/current-year';
 
 export const prerender = true;
 
@@ -18,7 +19,7 @@ export const GET: APIRoute = async (context) => {
     site: context.site!,
     trailingSlash: true,
     items: posts.map((post) => ({
-      title: post.data.title,
+      title: renderCurrentYear(post.data.title),
       description: post.data.description,
       pubDate: post.data.publishedAt,
       link: `/${post.id}/`,

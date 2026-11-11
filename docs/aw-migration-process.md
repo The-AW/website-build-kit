@@ -17,11 +17,11 @@ Fill in `aw-migration.json` before any deploy. It records the WordPress source U
 
 ### Per-site operator setup and kickoff
 
-Use a separate Work project/chat, local folder, The-AW repository and Manus project/task group for every website; give each site different staging and production Worker targets. Never share a client checkout. Pin the shared kit to the reviewed commit. Before long implementation, verify access to the exact GitHub repo and both Cloudflare connectors (record both connector IDs); confirm the injected BYOK token with `npx wrangler whoami` when available. Pass complete context to any delegate and never pass a token value. Keep one live writer per site. Manus does roughly 98% of implementation; Codex coordinates and reviews. Persist status, decisions, task links and release SHA in the site's checked-in status document and `AGENTS.md` where used. Every delegated task must return its Manus link to the owner; do not assume a new chat inherited prior context.
+Use a separate project/chat, local folder and GitHub repository for every website; give each site different staging and production Worker targets. Never share a client checkout. Pin the shared kit to the reviewed commit. Before implementation, verify access to the exact repository and Cloudflare account/zone; confirm the configured API token with `npx wrangler whoami` when available, without printing or forwarding the token. Keep one live writer per site. Persist status, decisions, task IDs/links, release SHA and unresolved items in the site's checked-in status document and `AGENTS.md` where used. Give every handoff complete domain, repository, target-ID, branch and decision context.
 
 Reusable kickoff prompt:
 
-> Implement the next AW migration. Source WordPress: `<URL>`; production host: `<domain>`; proposed staging host: `<domain>`; site repo/slug: `<owner/repo>`; required contact behavior: `<none or approved requirements>`; cutover authority: `<who/what session authorizes it>`. Use kit commit `<reviewed SHA>`. Work only in this site's project, folder and repository. Before substantial work, verify repo access and both Cloudflare connector IDs/BYOK access; include those IDs, domain/repo/commit and dependencies in any delegation, but never share secrets. Keep one live writer, record decisions/status/task links/release SHA in this repo, and return each Manus task link to the owner. Do not publish, change DNS, or deploy beyond the stated cutover authority. Keep optional contact limitations explicit.
+> Implement the next AW migration. Source WordPress: `<URL>`; production host: `<domain>`; proposed staging host: `<domain>`; site repo/slug: `<owner/repo>`; required contact behavior: `<none or approved requirements>`; cutover authority: `<who/what session authorizes it>`. Use kit commit `<reviewed SHA>`. Work only in this site's project, folder and repository. Before implementation, verify repository access, the Cloudflare account/zone and API-token access with `wrangler whoami`; never print or share token values. Keep one live writer, record decisions/status/task IDs and links/release SHA in this repo, and pass complete context to any handoff. Do not publish, change DNS, or deploy beyond the stated cutover authority. Keep optional contact limitations and any accepted exceptions explicit.
 
 ## 2. Inventory, migrate and build
 
@@ -44,6 +44,12 @@ The default is static Astro plus Cloudflare Workers Static Assets: no Astro Work
 
 The agreed reusable contact endpoint is same-origin `POST /api/leads`, then server-side Turnstile Siteverify, then the site's adapter to AW's private CRM. The kit's generated-project test uses a synthetic local adapter only; it does not prove a hosted CRM, secret setup or live/browser contact flow. The retained `modules/contact/` files are still a KV-only draft, not the CRM integration. Do not enable that draft or claim contact end-to-end success; wait for site-specific adapter, privacy/retention, recovery, staging and real-browser evidence. No notification provider is mandatory.
 
+### Archive SEO and current-year titles
+
+Treat category, tag, author, date, search-result and paginated archive routes as page families in their own right. Check every generated archive route for a distinct, useful title and description, one meaningful H1, a valid canonical under the intended pagination policy, and correct page-number wording. Generic defaults such as “Your blog category” must fail review. Keep a source-to-target SEO comparison and record intentional canonical/metadata exceptions in the site repository.
+
+For evergreen comparison pages whose title and H1 intentionally advertise the current year, write `[year]` in both fields and use the template's current-year renderer. It resolves from the UTC year at build time, so annual copy updates happen on the next build. Do not replace years that are historical facts, publication dates, product model names or body-copy context.
+
 ## 3. Production release and rollback
 
 ```bash
@@ -59,13 +65,34 @@ Minimal launch blockers are: the production build targets the production host an
 
 Before cutover, preserve a rollback snapshot and the WordPress origin. Do not retire Cloudways until a backup is verified and shared-server dependencies are checked; other sites may share that server. Keep the WordPress application/server until production smoke checks pass.
 
+If the owner explicitly accepts launch with missing evidence, add a dated `acceptance.exceptions` entry naming who authorized the exception, the decision scope, reason, supporting evidence and each unresolved item. Keep the relevant QA/backup/recovery fields false or incomplete until independently resolved. An accepted exception records a decision; it is not proof that the missing check passed. The manifest shape is:
+
+```json
+{
+  "id": "origin-recovery",
+  "decision": "launch while recovery remains unverified",
+  "authorizedBy": "site owner",
+  "authorizedAt": "2026-11-11T12:00:00Z",
+  "scope": "first production cutover only",
+  "reason": "owner accepts the documented operational risk",
+  "unresolvedAtDecision": ["independent origin recovery", "full media backup"],
+  "status": "accepted-exception",
+  "resolvedAt": "",
+  "resolutionEvidence": ""
+}
+```
+
+Once every listed item is resolved, keep the historical decision and change `status` to `resolved`, recording `resolvedAt` and `resolutionEvidence`.
+
 ## 4. Cloudflare auth and asset-upload fallback
 
 The proven auth path is BYOK `CLOUDFLARE_API_TOKEN` in the environment. Run `npx wrangler whoami` first. If it succeeds, missing Wrangler OAuth is not missing configured API access and `wrangler login` is unnecessary. Never print or pass the token as a command-line argument.
 
 If Wrangler's bulk asset transfer fails with `fetch failed` before activation, first confirm the failure and target; do not report a successful deploy. Use Cloudflare's [official Workers Static Assets direct-upload API](https://developers.cloudflare.com/workers/static-assets/direct-upload/): `POST /accounts/{account}/workers/scripts/{worker}/assets-upload-session` with the full manifest; upload only requested missing hashes to `/accounts/{account}/workers/assets/upload?base64=true` in bounded multipart batches using the short-lived upload JWT; `POST /accounts/{account}/workers/scripts/{worker}/versions` with completion JWT and Worker module/metadata; verify the returned version; then `POST /accounts/{account}/workers/scripts/{worker}/deployments` for that exact version at 100% and read back the deployment. Keep the BYOK token in the environment and use `curl --config -` for transient JWTs so neither token appears in argv/logs. Attach a custom domain separately only for a first cutover. For later releases retain the existing domain/DNS and rollback version; do not detach or recreate DNS.
 
-This flow is evidenced by Mae Experiente production: the injected BYOK token passed `wrangler whoami`, Wrangler's standard bulk transfer failed before activation, and the official API path completed version/deployment/domain readback. The one-off Mae helper was pinned to its PR and first-deploy-only; do not reuse it unchanged. See the [final cutover task aTJVRFYyXThd6nA8LNJLdL](https://manus.im/app/task/aTJVRFYyXThd6nA8LNJLdL) and [merged Mae PR #12](https://github.com/The-AW/mae-experiente/pull/12). That cutover had one release candidate and one live writer; unrelated sites stayed isolated. Parallel work is safe only for independent tasks supplied with the complete site, repository, domain, target-ID and decision context; review the final meaningful diff, not repeated approval rounds.
+Before any Cloudflare write, follow the Cloudflare change runbook that scaffolds into each site at `docs/cloudflare-change-runbook.md` (`template/docs/cloudflare-change-runbook.md` in this kit). Read current account, zone, DNS, Worker domains/routes/deployment, redirect rules and certificate state; distinguish Worker Custom Domain (Worker is the origin) from Worker Route (Worker runs in front of an origin); calculate the exact delta; perform one scoped change; then read back before continuing. The generated AW Wrangler config declares its Custom Domain, so the first Wrangler deployment may create that mapping, DNS record and certificate as part of the same operation—do not also add the domain manually. Do not alternate guessed A/CNAME/AAAA records with route/domain changes. Resolve exact conflicting records only from the captured snapshot and authorized cutover plan. Choose one intentional `www` design (its own Worker domain, or a proxied source plus a path/query-preserving redirect). Follow Cloudflare's [Custom Domains documentation](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/).
+
+This flow is evidenced by Mae Experiente production: the configured BYOK token passed `wrangler whoami`, Wrangler's standard bulk transfer failed before activation, and the official API path completed version/deployment/domain readback. The one-off Mae helper was pinned to its PR and first-deploy-only; do not reuse it unchanged. See the [merged Mae PR #12](https://github.com/The-AW/mae-experiente/pull/12). That cutover had one release candidate and one live writer; unrelated sites stayed isolated. Parallel work is safe only for independent tasks supplied with the complete site, repository, domain, target-ID and decision context; review the final meaningful diff, not repeated approval rounds.
 
 ## 5. After launch
 

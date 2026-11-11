@@ -378,6 +378,13 @@ section. Measure the mean pixel value rather than assuming.
 *Gate: payload measured before and after; every referenced asset resolves; every image has
 intrinsic dimensions.*
 
+On a migration, intrinsic dimensions are only the first check. Record the rendered image frame,
+aspect ratio, crop (`object-fit` and focal/object position) and representative image at both
+mobile and desktop widths for each page family. Compare the before/after `shots` manifests as
+well as the screenshots; a source file can load and still be visibly wrong because the new
+template changed its frame or crop. `npm run shots` records natural and rendered image dimensions
+and crop settings in each manifest.
+
 ### 6 · Integrations
 Forms, storage, anti-bot protection and analytics. Cloudflare Turnstile with server-side
 Siteverify is the selected anti-bot protection. The starter archives submissions in KV, but
@@ -395,6 +402,19 @@ Titles, descriptions, canonicals, Open Graph, sitemap, robots. Structured data d
 same data file the UI uses. On a migration, diff every title and description against the old
 site and justify each difference. Watch for plugin behaviour that is not obvious from the
 settings: most only append the site name when a page has *no* custom SEO title.
+
+Treat category, tag, author, date, search and paginated archives as SEO page families, even if
+they are absent from the sitemap. Compare the source inventory with built routes, then check
+every generated archive URL for unique useful title/description, one meaningful H1, a canonical
+that follows the recorded pagination policy, and page-number wording. Generic plugin defaults
+such as “Your blog category” are failures. `npm run verify` scans all discovered routes and
+checks archive title, description and H1 duplication; the human comparison still decides whether
+the wording is useful and faithful.
+
+If an evergreen buying guide intentionally includes the current year in both title and H1, write
+`[year]` in both fields. The shared `renderCurrentYear()` helper resolves the token from UTC at
+build time and the verifier catches any token left visible. Use it only for freshness labels;
+keep historical facts, product/model years and publication dates literal.
 
 **Keep the sitemap at the filename the old site used.** Search Console and Bing store the URL
 that was submitted; change it and the stored entry 404s, reported days later in an email nobody
@@ -708,7 +728,7 @@ Not "the build passed." Every row verified against the **deployed** site.
 | Statement | `/accessibility` published, footer-linked from every page, dated, naming a working contact route and the actual known gaps |
 | Design decided | `npm run tells` clears the undecided section — real brand ramp, two real faces, no scaffold page. `build:production` refuses otherwise |
 | Tells | Fewer than three from `design.md` §3, and the ones needing eyes checked beside the reference sites |
-| Visual | One page per template family **looked at** in a browser at mobile and desktop widths — a page can build clean, return 200 and render broken. `stacks.md` §1c |
+| Visual | After the last design change, every page family **looked at** in a browser at mobile and desktop widths; shared header/footer and key states reviewed; image frame dimensions/crop compared with source; commit and staging version recorded in `docs/page-family-review.csv`. A page can build clean, return 200 and render broken. `stacks.md` §1c |
 | Console + network | Zero console errors and zero failed requests on the deployed site — `npm run console`. A blocked third-party script or a 404 asset is invisible to a status-code check |
 | Visual record | On a migration: `npm run shots` on both sides, and the pairs in `shots/index.html` actually looked at. Nothing else catches a page that came out *worse* — it builds clean, returns 200 and nobody compares it to what it replaced |
 | Mobile | Verified on a real device, not only emulated widths — including a short/landscape viewport |
