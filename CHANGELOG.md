@@ -10,6 +10,15 @@ in the generic starter with exact-origin checks and focused security tests; and 
 existing website-build skill to scaffold from the AW fork. Site-specific content remains in
 separate site repositories.
 
+The migration checklist now calls for archive-family SEO review and a page-family staging
+review after the last design change. `npm run verify` scans every discovered route and source-
+inventoried archive route, checks archive title/description/H1 uniqueness and rejects generic
+archive descriptions; `npm run shots` records image source/rendered dimensions and crop settings.
+The template resolves explicit `[year]` tokens in SEO titles, H1s and structured-data headlines
+at build time. Production manifests accept structured, dated exceptions while preserving each
+unresolved acceptance item. A Cloudflare change runbook separates read-only discovery, one-write-
+at-a-time changes and post-change readback, including Custom Domain vs Route and `www` handling.
+
 ## 2026-10-29 — 0.1.23, and the Monday audit went red under no commit at all
 
 `.github/workflows/audit.yml` shipped in 0.1.22 to separate the world moving from this repository

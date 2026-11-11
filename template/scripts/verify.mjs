@@ -195,6 +195,11 @@ const routes = discoveredRoutes.map((url) => {
   }
 });
 
+const isArchiveRoutePath = (path) =>
+  /\/(?:category|categories|categoria|categorias|tag|tags|etiqueta|etiquetas|author|authors|autor|autores|date|data|search|busca|pesquisa|blog|archive|arquivo)(?:\/|$)/i.test(path) ||
+  /\/page\/\d+\/?$/i.test(path) ||
+  /\/(?:19|20)\d{2}(?:\/(?:0?[1-9]|1[0-2])(?:\/(?:0?[1-9]|[12]\d|3[01]))?)?\/?$/i.test(path);
+
 if (routes.some((r, i) => r !== discoveredRoutes[i])) {
   notes.push(
     `routes came from a sitemap written for another host and were re-rooted onto ${origin} — ` +
@@ -250,12 +255,17 @@ function redirectRules() {
     .filter((r) => !r[0].includes('*') && !r[0].includes(':'));
 }
 
-const LINK_PAGE_CAP = 150;
-const pagesToScan = routes.slice(0, LINK_PAGE_CAP);
-if (routes.length > LINK_PAGE_CAP) {
-  notes.push(
-    `link check read the first ${LINK_PAGE_CAP} of ${routes.length} pages — raise LINK_PAGE_CAP for a full sweep`,
-  );
+/* Scan every sitemap route and every source-inventoried archive route. Some
+   CMS archives are intentionally omitted from the sitemap; they still need
+   deployed metadata reviewed. */
+const discoveredPaths = new Set(routes.map((url) => new URL(url).pathname));
+const sourceArchiveRoutes = (readInventory(readFileSync)?.live ?? [])
+  .filter((path) => isArchiveRoutePath(new URL(path, origin).pathname))
+  .map((path) => new URL(path, origin).href)
+  .filter((url) => !discoveredPaths.has(new URL(url).pathname));
+const pagesToScan = [...routes, ...sourceArchiveRoutes];
+if (sourceArchiveRoutes.length) {
+  console.log(`  ${DIM}including ${sourceArchiveRoutes.length} source-inventoried archive route(s) outside the sitemap${RESET}`);
 }
 
 /** target URL → the pages that link to it. Deduped, so each target is fetched once. */
@@ -269,9 +279,10 @@ const perf = new Map();
 const assetUrls = new Set();
 let scanned = 0;
 
-await pool(pagesToScan, async (pageUrl) => {
-  const res = await req(pageUrl);
+await pool(pagesToScan, async (requestedUrl) => {
+  const res = await req(requestedUrl, { redirect: 'follow' });
   if (res.status !== 200) return;
+  const pageUrl = res.url || requestedUrl;
   const html = await res.text();
   scanned++;
 
@@ -347,12 +358,24 @@ await pool(pagesToScan, async (pageUrl) => {
     images,
   });
 
+  const h1 = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1] ?? '';
+  const h1Text = h1
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
   meta.set(new URL(pageUrl).pathname, {
     title: /<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1]?.trim() ?? '',
     description:
       /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i.exec(html)?.[1]?.trim() ?? '',
     canonical: /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i.exec(html)?.[1] ?? '',
     h1Count: (html.match(/<h1[\s>]/gi) ?? []).length,
+    h1Text,
     noindex: /<meta[^>]+name=["']robots["'][^>]+content=["'][^"']*\bnoindex\b/i.test(html),
   });
 });
@@ -483,10 +506,7 @@ record(
       ? '\n      nothing links to these — put them in src/data/nav.ts, link them from a parent' +
         '\n      page, or set noindex if being unlinked is deliberate'
       : '') +
-    (orphans.length && routes.length > LINK_PAGE_CAP
-      ? `\n      ⚠ only the first ${LINK_PAGE_CAP} page(s) were read for links, so a page linked` +
-        `\n        only from beyond that cap reports here wrongly — raise LINK_PAGE_CAP to be sure`
-      : ''),
+    '',
   { warn: true },
 );
 
@@ -573,18 +593,18 @@ if (ogImages.size) {
  */
 section('Meta');
 
-const indexable = [...meta.entries()].filter(([, m]) => !m.noindex);
+const reviewedPages = [...meta.entries()].filter(([, m]) => env === 'staging' || !m.noindex);
 
-if (!indexable.length) {
-  console.log(`  ${DIM}every scanned page is noindex — nothing to check${RESET}`);
+if (!reviewedPages.length) {
+  console.log(`  ${DIM}no page metadata was scanned${RESET}`);
 } else {
-  console.log(`  ${DIM}${indexable.length} indexable page(s) of ${meta.size} scanned${RESET}`);
+  console.log(`  ${DIM}${reviewedPages.length} page(s) reviewed for SEO metadata of ${meta.size} scanned${RESET}`);
 
-  const missingTitle = indexable.filter(([, m]) => !m.title);
+  const missingTitle = reviewedPages.filter(([, m]) => !m.title);
   record('every page has a title', missingTitle.length === 0,
     missingTitle.map(([p]) => p).join(', '));
 
-  const missingDesc = indexable.filter(([, m]) => !m.description);
+  const missingDesc = reviewedPages.filter(([, m]) => !m.description);
   record('every page has a meta description', missingDesc.length === 0,
     missingDesc.map(([p]) => p).join(', ') +
       (missingDesc.length ? ' — Google writes its own snippet when this is absent' : ''));
@@ -596,8 +616,8 @@ if (!indexable.length) {
    */
   const dupes = (field) => {
     const byValue = new Map();
-    for (const [path, m] of indexable) {
-      const v = m[field];
+    for (const [path, m] of reviewedPages) {
+      const v = (m[field] ?? '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
       if (!v) continue;
       if (!byValue.has(v)) byValue.set(v, []);
       byValue.get(v).push(path);
@@ -617,14 +637,14 @@ if (!indexable.length) {
    * Google rewrites snippets anyway, so a long title is a judgement call and
    * not a defect — but a 12-character title is usually a bug.
    */
-  const longTitles = indexable.filter(([, m]) => m.title.length > 60);
-  const shortTitles = indexable.filter(([, m]) => m.title && m.title.length < 15);
+  const longTitles = reviewedPages.filter(([, m]) => m.title.length > 60);
+  const shortTitles = reviewedPages.filter(([, m]) => m.title && m.title.length < 15);
   record('titles are a sensible length', longTitles.length === 0 && shortTitles.length === 0,
     [...longTitles.map(([p, m]) => `${p} — ${m.title.length} chars, truncates in the SERP`),
      ...shortTitles.map(([p, m]) => `${p} — ${m.title.length} chars, probably unfinished`)].join('\n      '),
     { warn: true });
 
-  const longDesc = indexable.filter(([, m]) => m.description.length > 165);
+  const longDesc = reviewedPages.filter(([, m]) => m.description.length > 165);
   record('descriptions are a sensible length', longDesc.length === 0,
     longDesc.map(([p, m]) => `${p} — ${m.description.length} chars`).join('\n      '),
     { warn: true });
@@ -635,10 +655,11 @@ if (!indexable.length) {
    * the exception is a deliberate duplicate, which should be rare enough to
    * read every hit.
    */
-  const badCanonical = indexable.filter(([path, m]) => {
+  const badCanonical = reviewedPages.filter(([path, m]) => {
     if (!m.canonical) return true;
     try {
-      return new URL(m.canonical).pathname !== path;
+      const canonical = new URL(m.canonical);
+      return canonical.pathname !== path || (!isLocal && canonical.origin !== new URL(origin).origin);
     } catch {
       return true;
     }
@@ -648,9 +669,57 @@ if (!indexable.length) {
       .map(([p, m]) => `${p} → ${m.canonical || '(none)'}`)
       .join('\n      '));
 
-  const badH1 = indexable.filter(([, m]) => m.h1Count !== 1);
+  const badH1 = reviewedPages.filter(([, m]) => m.h1Count !== 1);
   record('exactly one h1 per page', badH1.length === 0,
     badH1.map(([p, m]) => `${p} — ${m.h1Count} h1(s)`).join('\n      '), { warn: true });
+
+  const unresolvedYearToken = reviewedPages.filter(([, m]) => /\[year\]/i.test(`${m.title} ${m.h1Text}`));
+  record('current-year title tokens are rendered', unresolvedYearToken.length === 0,
+    unresolvedYearToken.map(([path, m]) => `${path} — ${m.title} / ${m.h1Text}`).join('\n      '));
+
+  const archives = reviewedPages.filter(([path]) => isArchiveRoutePath(path));
+  if (archives.length) {
+    console.log(`  ${DIM}${archives.length} archive route(s) scanned: category/tag/author/date/search/pagination${RESET}`);
+    const duplicatesWithin = (field) => {
+      const byValue = new Map();
+      for (const [path, m] of archives) {
+        const value = (m[field] ?? '').trim().toLocaleLowerCase();
+        if (!value) continue;
+        if (!byValue.has(value)) byValue.set(value, []);
+        byValue.get(value).push(path);
+      }
+      return [...byValue.entries()].filter(([, paths]) => paths.length > 1);
+    };
+    for (const field of ['title', 'description', 'h1Text']) {
+      const duplicate = duplicatesWithin(field);
+      record(`archive ${field === 'h1Text' ? 'H1s' : `${field}s`} are distinct`, duplicate.length === 0,
+        duplicate.map(([value, paths]) => `${paths.join(', ')}\n          "${value.slice(0, 90)}"`).join('\n      '));
+    }
+
+    const genericDescription = /^(?:your blog category|category archive|tag archive|author archive|date archive|search results|archive|categoria(?: do blog)?|arquivo(?: de (?:categoria|autor|tag))?|resultados? da pesquisa|blog)$/i;
+    const generic = archives.filter(([, m]) => genericDescription.test(m.description.trim()));
+    record('archive descriptions are specific, not placeholders', generic.length === 0,
+      generic.map(([path, m]) => `${path} — "${m.description}"`).join('\n      '));
+
+    const shortDescriptions = archives.filter(([, m]) => m.description.trim().length < 50);
+    record('archive descriptions provide useful context', shortDescriptions.length === 0,
+      shortDescriptions.map(([path, m]) => `${path} — ${m.description.trim().length} characters: "${m.description}"`).join('\n      '),
+      { warn: true });
+
+    const emptyH1 = archives.filter(([, m]) => m.h1Count !== 1 || m.h1Text.length < 8);
+    record('archive H1 is meaningful and present', emptyH1.length === 0,
+      emptyH1.map(([path, m]) => `${path} — ${m.h1Count} H1(s), text "${m.h1Text}"`).join('\n      '));
+
+    const pageNumberMissing = archives.filter(([path, m]) => {
+      const page = /\/page\/(\d+)\/?$/i.exec(path)?.[1];
+      if (!page) return false;
+      return !new RegExp(`(?:page|página)\\s*${page}\\b`, 'i').test(`${m.title} ${m.h1Text}`);
+    });
+    record('paginated archive title or H1 identifies its page', pageNumberMissing.length === 0,
+      pageNumberMissing.map(([path, m]) => `${path} — ${m.title} / ${m.h1Text}`).join('\n      '));
+  } else {
+    notes.push('no archive routes were discovered in the deployed sitemap; compare the source archive inventory and add any intentional noindex/redirect disposition');
+  }
 }
 
 /* ── Weight and render-blocking ────────────────────────────────────────────
@@ -677,7 +746,6 @@ if (!indexable.length) {
  */
 const WEIGHT_BUDGET_KB = 1600; // whole page, uncompressed, including images
 const BLOCKING_STYLE_BUDGET = 2;
-const ASSET_CAP = 250;
 
 section('Weight and render-blocking');
 
@@ -691,10 +759,7 @@ if (!perf.size) {
    * compressed and are most of the weight — it is the transfer size anyway.
    * Only CSS and JS differ, and those are covered by the compression check below.
    */
-  const assets = [...assetUrls].slice(0, ASSET_CAP);
-  if (assetUrls.size > ASSET_CAP) {
-    notes.push(`weight read the first ${ASSET_CAP} of ${assetUrls.size} assets — raise ASSET_CAP for a full total`);
-  }
+  const assets = [...assetUrls];
 
   /*
    * ⚠ HEAD IS NOT ENOUGH, AND THE OBVIOUS FALLBACK IS A TRAP. Real CDNs
@@ -892,14 +957,7 @@ if (!inventory) {
   console.log(`  ${DIM}no recon/urls.txt — greenfield build, so there is no old site to have lost${RESET}`);
   notes.push('coverage was not checked — run `npm run recon` on a migration and this becomes a gate');
 } else {
-  const COVERAGE_CAP = 300;
-  const toCheck = inventory.live.slice(0, COVERAGE_CAP);
-  if (inventory.live.length > COVERAGE_CAP) {
-    notes.push(
-      `coverage checked the first ${COVERAGE_CAP} of ${inventory.live.length} inventoried URL(s) — ` +
-        'raise COVERAGE_CAP for a full sweep',
-    );
-  }
+  const toCheck = inventory.live;
 
   console.log(
     `  ${DIM}${toCheck.length} URL(s) the old site served` +
@@ -1149,7 +1207,7 @@ if (env === 'production' && smIndex.status === 200) {
 
   const dates = [];
   const noindexed = [];
-  await pool(routes.slice(0, 60), async (url) => {
+  await pool(routes, async (url) => {
     const res = await req(url);
     if (res.status !== 200) return;
     const body = await res.text();

@@ -8,6 +8,7 @@ import { business, addressOneLine } from '../data/business';
 import { services } from '../data/services';
 import manifest from '../data/image-manifest.json';
 import { hasCompletePostalAddress, hasConfiguredText, isValidCoordinates, isValidEmail, isValidHttpsUrl, isValidPhone } from '../lib/structured-data';
+import { renderCurrentYear } from '../lib/current-year';
 
 type ManifestEntry = { src: string; width: number; height: number };
 const images = manifest as Record<string, ManifestEntry>;
@@ -196,7 +197,7 @@ if (crumbs.length) {
     itemListElement: crumbs.map((crumb, index) => ({
       '@type': 'ListItem',
       position: index + 1,
-      name: crumb.name,
+      name: renderCurrentYear(crumb.name),
       item: abs(crumb.href),
     })),
   });
@@ -240,7 +241,7 @@ if (article && articleCanonical && articleId) {
   const blogPosting: Record<string, unknown> = {
     '@type': 'BlogPosting',
     '@id': articleId,
-    headline: article.headline,
+    headline: renderCurrentYear(article.headline),
     description: article.description,
     datePublished: article.publishedAt.toISOString(),
     mainEntityOfPage: { '@id': pageId },

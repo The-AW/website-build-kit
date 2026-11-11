@@ -188,6 +188,32 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       if (!manifest?.acceptance?.recordedBy || !manifest?.acceptance?.recordedAt || Number.isNaN(Date.parse(manifest.acceptance.recordedAt))) {
         add('Production deploy requires acceptance.recordedBy and a valid acceptance.recordedAt timestamp.');
       }
+      const exceptions = manifest?.acceptance?.exceptions ?? [];
+      if (!Array.isArray(exceptions)) {
+        add('acceptance.exceptions must be an array; unresolved release gaps must not be hidden in free-form notes.');
+      } else {
+        exceptions.forEach((entry, index) => {
+          const validDate = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
+          const validStatus = ['accepted-exception', 'resolved'].includes(entry?.status);
+          if (!entry || typeof entry.id !== 'string' || !entry.id.trim() ||
+              typeof entry.decision !== 'string' || !entry.decision.trim() ||
+              typeof entry.authorizedBy !== 'string' || !entry.authorizedBy.trim() ||
+              !validDate(entry.authorizedAt) ||
+              typeof entry.scope !== 'string' || !entry.scope.trim() ||
+              typeof entry.reason !== 'string' || !entry.reason.trim() ||
+              !Array.isArray(entry.unresolvedAtDecision) || !entry.unresolvedAtDecision.length ||
+              !validStatus) {
+            add(`acceptance.exceptions[${index}] must record decision, authorizer/date, scope, reason, unresolvedAtDecision and status.`);
+            return;
+          }
+          if (entry.status === 'resolved' && (!validDate(entry.resolvedAt) || typeof entry.resolutionEvidence !== 'string' || !entry.resolutionEvidence.trim())) {
+            add(`acceptance.exceptions[${index}] marked resolved must include resolvedAt and resolutionEvidence.`);
+          }
+          if (entry.unresolvedAtDecision.some((item) => typeof item !== 'string' || !item.trim())) {
+            add(`acceptance.exceptions[${index}].unresolvedAtDecision must contain nonempty descriptions of every open item.`);
+          }
+        });
+      }
       const rollback = manifest?.rollback ?? {};
       if (!rollback.snapshotPath || !existsSync(resolve(cwd, rollback.snapshotPath))) {
         add('Production deploy requires an existing rollback snapshot at rollback.snapshotPath.');

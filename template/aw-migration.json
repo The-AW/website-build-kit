@@ -30,7 +30,8 @@
   "acceptance": {
     "criteria": [],
     "recordedBy": "",
-    "recordedAt": ""
+    "recordedAt": "",
+    "exceptions": []
   },
   "rollback": {
     "snapshotPath": "",

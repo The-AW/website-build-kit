@@ -12,6 +12,7 @@
  * with aria-current on the last item, which is what assistive tech and
  * BreadcrumbList structured data both expect.
  */
+import { renderCurrentYear } from '../lib/current-year';
 
 interface Props {
   title: string;
@@ -22,6 +23,7 @@ interface Props {
 }
 
 const { title, lede, breadcrumbs, class: className = '' } = Astro.props;
+const resolvedTitle = renderCurrentYear(title);
 
 /* Narrowed once here rather than inside the template: a `&&` guard in an Astro
    expression does not carry the narrowing into the callback, so `.map((crumb, i)`
@@ -39,11 +41,11 @@ const crumbs = breadcrumbs ?? [];
               <li>
                 {i < crumbs.length - 1 ? (
                   <>
-                    <a href={crumb.href}>{crumb.name}</a>
+                    <a href={crumb.href}>{renderCurrentYear(crumb.name)}</a>
                     <span aria-hidden="true">/</span>
                   </>
                 ) : (
-                  <span aria-current="page">{crumb.name}</span>
+                  <span aria-current="page">{renderCurrentYear(crumb.name)}</span>
                 )}
               </li>
             ))}
@@ -52,7 +54,7 @@ const crumbs = breadcrumbs ?? [];
       )
     }
 
-    <h1>{title}</h1>
+    <h1>{resolvedTitle}</h1>
     {lede && <p class="hero__lede">{lede}</p>}
     <slot />
   </div>
