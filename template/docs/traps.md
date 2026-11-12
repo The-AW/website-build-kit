@@ -58,6 +58,38 @@ fine while the no-JS path looks broken.
 
 *Fix:* send `-H "Origin: https://<host>"` when testing with curl. Browsers always do.
 
+### `redirect: 'error'` is not implemented in Workers and throws on the fetch
+
+The Workers runtime accepts only `'follow'` and `'manual'` for `RequestRedirect`. Passing
+`'error'` does not return an error response — it throws a `TypeError` synchronously:
+
+```
+TypeError: Invalid redirect value, must be one of "follow" or "manual"
+("error" won't be implemented since it does not make sense at the edge;
+use "manual" and check the response status code)
+```
+
+TypeScript does not catch this: `RequestRedirect` includes `'error'` in its type union, so
+the code compiles cleanly. A local/Node fetch stub never reads `init.redirect`, so unit tests
+pass too. The failure only appears at runtime.
+
+*Fix:* use `redirect: 'manual'` and reject any `3xx` status explicitly:
+
+```ts
+const response = await fetch(url, { redirect: 'manual', … });
+if (response.status >= 300 && response.status < 400) {
+  return { ok: false, reason: 'rejected', detail: 'endpoint redirected' };
+}
+```
+
+### A CRM forward that logs nothing is indistinguishable from a working one
+
+If the hand-off to a third party fails and the error is swallowed, every lead is silently lost.
+No test harness catches this — it only surfaces when a real submission never arrives.
+
+*Fix:* log a structured `lead_crm_failure` event with `reason`, `status` and a non-identifying
+`detail` on every non-`ok` CRM result, so `wrangler tail` can confirm delivery end-to-end.
+
 ### The Cloudflare adapter adds a `SESSION` KV binding with no id
 
 Left unconfigured, `@astrojs/cloudflare` writes `{"binding": "SESSION"}` with no id into the
