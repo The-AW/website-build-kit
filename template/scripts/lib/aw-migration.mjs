@@ -5,6 +5,18 @@ export const MANIFEST_FILE = 'aw-migration.json';
 export const CONFIG_DIR = '.aw';
 export const COMPATIBILITY_DATE = '2026-07-01';
 
+/**
+ * Whether the private-CRM lead form is active for the given environment.
+ * Staging: active whenever forms.choice is private_crm.
+ * Production: active only when forms.productionEnabled is explicitly true,
+ * preventing a migrated site from going live with a silent no-op form.
+ */
+export function leadsEnabledFor(manifest, environment) {
+  if (manifest?.forms?.choice !== 'private_crm') return false;
+  if (environment === 'staging') return true;
+  return manifest?.forms?.productionEnabled === true;
+}
+
 export function readMigrationManifest(cwd = process.cwd()) {
   const path = join(cwd, MANIFEST_FILE);
   if (!existsSync(path)) throw new Error(`${MANIFEST_FILE} not found in the project root.`);
@@ -102,6 +114,16 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
     if (!adapterPath || !existsSync(adapterPath)) add('forms.choice is private_crm but forms.crmAdapter does not point to the site-specific existing CRM adapter.');
     else if (/NOT_IMPLEMENTED|IMPLEMENT_EXISTING_PRIVATE_CRM/i.test(readFileSync(adapterPath, 'utf8'))) {
       add(`CRM adapter ${crmAdapter} is still the unimplemented template stub.`);
+    }
+    if (environment === 'production' && manifest?.forms?.productionEnabled === true) {
+      const acceptance = manifest?.forms?.productionAcceptance ?? {};
+      if (!acceptance.stagingSubmissionVerified) add('forms.productionAcceptance.stagingSubmissionVerified must be true before enabling production leads.');
+      if (!acceptance.testRecordDeleted) add('forms.productionAcceptance.testRecordDeleted must be true: the synthetic staging record must be deleted after verification.');
+      if (!acceptance.acceptedOn || Number.isNaN(Date.parse(acceptance.acceptedOn))) add('forms.productionAcceptance.acceptedOn must be a valid YYYY-MM-DD date.');
+      if (!acceptance.acceptedBy) add('forms.productionAcceptance.acceptedBy must identify who verified the staging submission.');
+    }
+    if (environment === 'production' && manifest?.forms?.productionEnabled !== true) {
+      add('forms.productionEnabled must be true to build a production lead-capture form; set it only after staging submission is verified and the test record deleted.');
     }
   }
 
@@ -205,6 +227,7 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
 
   const host = hostUrls[environment];
   const worker = workers[environment];
+  const leadsEnabled = leadsEnabledFor(manifest, environment);
   if (host && validWorker(worker)) {
     const siteUrl = host.origin;
     return {
@@ -218,6 +241,7 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       environment,
       phase,
       runtimeEnabled: choice === 'private_crm',
+      leadsEnabled,
     };
   }
   return {
@@ -229,6 +253,7 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
     environment,
     phase,
     runtimeEnabled: choice === 'private_crm',
+    leadsEnabled,
   };
 }
 
@@ -257,6 +282,9 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
   };
   if (validId(result.accountId)) config.account_id = result.accountId;
   if (runtimeEnabled) config.compatibility_flags = ['nodejs_compat'];
+  if (runtimeEnabled) {
+    config.vars = { LEADS_ENABLED: leadsEnabledFor(manifest, environment) ? 'true' : 'false' };
+  }
   return config;
 }
 
