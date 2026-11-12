@@ -70,3 +70,83 @@ Do not retire Cloudways as part of the cutover. Before any later retirement, ver
 | Recovery window | Keep WordPress origin and rollback snapshot available |
 
 Track visual/copy polish and non-essential integrations separately from the minimum launch gate.
+
+## 7. Contact form — where submissions go
+
+> **Reference implementation:** `https://belezaplastica.com.br/contato/`
+> Copy the form structure (fields, Turnstile placement, consent checkbox) from that site
+> when setting up a new migration. It is the first fully verified AW affiliate form.
+
+### Request path (browser → database)
+
+```
+User fills form on /contato/  (or /contact/ on sites that use the AW private-CRM page)
+  │
+  ▼
+POST /api/leads  (same-origin, Astro on-demand route)
+  │  validates name/email/phone/message/consent
+  │  verifies Cloudflare Turnstile token (server-side Siteverify API)
+  │  rate-limits 10 req/min per IP via Cloudflare rate-limit binding
+  │
+  ▼
+websites-contact-crm Worker  (The-AW/websites-contact-crm)
+  URL: https://websites-contact-crm.theamazingworks.workers.dev  (staging)
+       same Worker, shared secret differentiates site scope           (production)
+  │  validates X-AW-Ingestion-Secret (constant-time, per-environment)
+  │  validates payload shape (contact profile: name/email/phone/message/sourceUrl/consent)
+  │
+  ▼
+Cloudflare D1 — table: leads
+  Staging DB:    websites-contact-crm-staging    (id: 61bc71ad-4909-4478-866e-cd538231cd3b… see aw-migration.json)
+  Production DB: websites-contact-crm-production (id: e31827c7-4909-4478-866e-cd538231cd3b)
+  Columns: id · name · email · phone · message · source_url · consent · created_at
+```
+
+### Reading submitted leads
+
+```bash
+# From the websites-contact-crm repo root:
+npx wrangler d1 execute websites-contact-crm-production --remote \
+  --command "SELECT id, name, email, phone, message, source_url, created_at FROM leads ORDER BY created_at DESC LIMIT 20"
+
+# Staging:
+npx wrangler d1 execute websites-contact-crm-staging --remote \
+  --command "SELECT id, name, email, phone, message, source_url, created_at FROM leads ORDER BY created_at DESC LIMIT 20"
+```
+
+The `source_url` column identifies which site sent the lead. All AW migrations write to the
+same two databases; the site is distinguished by `source_url`, not by a separate table or DB.
+
+### Deleting a test record
+
+After verifying any synthetic submission, delete it immediately:
+
+```bash
+npx wrangler d1 execute websites-contact-crm-production --remote \
+  --command "DELETE FROM leads WHERE id = '<uuid>'"
+```
+
+Record the deletion in `aw-migration.json` under `forms.productionAcceptance.testRecordDeleted: true`.
+
+### How the form is enabled per site
+
+| State | What it means |
+| --- | --- |
+| `forms.choice: "none"` | No form; static site only |
+| `forms.choice: "private_crm"` + no `productionEnabled` | Form active on staging; **disabled in production build** |
+| `forms.choice: "private_crm"` + `productionEnabled: true` + `productionAcceptance` filled | Form live in production |
+
+The build will refuse `productionEnabled: true` without a complete `productionAcceptance` block
+(staging submission verified, test record deleted, `acceptedOn` date, `acceptedBy` email).
+
+### Worker secrets required per site
+
+Each migrated site's production Worker needs three secrets set via `wrangler secret put`:
+
+| Secret | What it is |
+| --- | --- |
+| `TURNSTILE_SECRET_KEY` | The secret key for **this site's** production Turnstile widget (from dash.cloudflare.com → Turnstile) |
+| `LEADS_INGESTION_SECRET` | The shared production ingestion secret for `websites-contact-crm` (ask the AW team — do not rotate without updating all sites) |
+| `LEADS_RATE_LIMIT_HMAC_SECRET` | Per-site HMAC secret for the rate-limit binding |
+
+Staging uses separate versions of all three. Never copy a production secret to a staging Worker.
