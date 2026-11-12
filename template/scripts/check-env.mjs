@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { contactRuntime, expectedRoute, readMigrationManifest, validateMigrationManifest } from './lib/aw-migration.mjs';
+import { contactRuntime, expectedRoute, leadsEnabledFor, readMigrationManifest, validateMigrationManifest } from './lib/aw-migration.mjs';
 
 const env = process.env.PUBLIC_SITE_ENV;
 const reset = '\x1b[0m';
@@ -64,6 +64,17 @@ if (contactRuntime(manifest)) {
 }
 if (manifest.forms.choice === 'none' && (config.kv_namespaces?.length || config.bindings?.some((binding) => binding.type === 'kv_namespace'))) {
   fail('static-only migrations must not carry KV bindings.');
+}
+if (manifest.forms.choice === 'private_crm') {
+  const expectedLeads = leadsEnabledFor(manifest, env) ? 'true' : 'false';
+  if (config.vars?.LEADS_ENABLED !== expectedLeads) {
+    fail(
+      `${configPath} must set vars.LEADS_ENABLED="${expectedLeads}" for the ${env} environment.`,
+      env === 'production' && expectedLeads === 'false'
+        ? ['Set forms.productionEnabled: true in aw-migration.json only after staging submission is verified and the test record deleted.']
+        : [],
+    );
+  }
 }
 if (config.name === manifest.targets.workers[env === 'staging' ? 'production' : 'staging']) {
   fail(`${env} config points at the other environment's Worker.`);
