@@ -378,6 +378,55 @@ section. Measure the mean pixel value rather than assuming.
 *Gate: payload measured before and after; every referenced asset resolves; every image has
 intrinsic dimensions.*
 
+### 5b. Migrated media (WordPress `/wp-content/uploads/`)
+
+The rules above are written for images that enter through `media/source/`. A migration
+arrives with thousands of uploads already referenced by old URLs, and **the tempting move —
+deploy them byte-for-byte at their original paths — ships the old site's weight unchanged.**
+On Itens de Casa (615 posts) that was 9,521 used uploads, 9,463 of them PNG, **2.9 GB**;
+product thumbnails rendered at ~270px were served as full-size PNGs and roundup pages were
+visibly slow. The fix, below, took the same files to **99 MB** with no URL lost.
+
+The default for migrated uploads:
+
+1. **Deploy only what pages use.** Build the used set from the rendered HTML (`src`, `srcset`,
+   CSS `url()`, `og:image`, JSON-LD), not from the media library. A WordPress library is
+   typically 3–5× the used set once every `-WxH` size variant is counted. Back up the
+   unused remainder outside the deploy; that is the owner's task, recorded in `BUILD-STATE.md`.
+2. **Mind the Workers Free cap: 20,000 files per version** (25 MiB per file). A full
+   AVIF+WebP width ladder for every legacy image multiplies the file count past it. For
+   legacy uploads use **one WebP per image**, which keeps the file count equal to the
+   used set. Keep the AVIF+WebP ladder for new images through `npm run media`.
+3. **Size each WebP from the measured rendered width, not the original.** Load every built
+   page at phone/tablet/desktop widths in a headless browser with image downloads blocked
+   and record the largest rendered width per `src`. Encode at ~2× that width, capped at
+   1600px, never upscaled, quality ~78, alpha kept. Cache by content hash so repeat builds
+   convert nothing. Leave GIF/SVG/WebP/AVIF and favicon/touch-icon PNGs as they are; social
+   cards stay JPEG (above).
+4. **Rewrite every reference after the build** — `src`, `srcset` (real widths; drop
+   `srcset`/`sizes` when one candidate remains), `og:`/`twitter:` images, JSON-LD, CSS
+   `url()`, search indexes — and set `height` from the new file's aspect. **Fail the build
+   if any reference points at a file that is not deployed.**
+5. **Keep the old URLs with one pattern rule, not per-file redirects.** `.png`/`.jpg`/`.jpeg`
+   and `-WxH` variant URLs 301 in **one hop** to the deployed WebP, from the Worker's
+   asset-miss handler. Unit-test originals, used variants, `-scaled`, percent-encoding,
+   files deployed as they are, and real 404s.
+6. **Cache uploads for a year.** Add `/wp-content/uploads/*` to `public/_headers` with
+   `public, max-age=31536000, immutable`. Uploads are named by path and never replaced in
+   place on a migrated site; if one is, it gets a new filename. HTML stays
+   `max-age=0, must-revalidate`.
+7. **The LCP image is never lazy.** The first product/featured image on a post and the home
+   hero get `fetchpriority="high"` and no `loading="lazy"`; everything below stays lazy.
+   Preload the hero, with a `media`-specific preload if mobile uses a smaller crop.
+8. **Fonts are part of the same budget.** With `font-display: swap`, a late title face
+   reflows the heading and costs CLS; preload the one face that sets the LCP text, not every
+   face — preloading all of them was measured to delay LCP.
+
+*Gate (migration): used-media bytes before/after recorded; no deployed raster over 200 KB
+without a written reason; file count under the plan's cap with headroom; old upload URLs 301
+in one hop; PageSpeed Insights on the deployed staging site for the home page and one page
+per family — **LCP < 1.0s desktop, < 2.5s mobile, CLS < 0.1** — recorded in `BUILD-STATE.md`.*
+
 ### 6 · Integrations
 Forms, storage, anti-bot protection and analytics. Cloudflare Turnstile with server-side
 Siteverify is the selected anti-bot protection. The starter archives submissions in KV, but
@@ -712,7 +761,7 @@ Not "the build passed." Every row verified against the **deployed** site.
 | Console + network | Zero console errors and zero failed requests on the deployed site — `npm run console`. A blocked third-party script or a 404 asset is invisible to a status-code check |
 | Visual record | On a migration: `npm run shots` on both sides, and the pairs in `shots/index.html` actually looked at. Nothing else catches a page that came out *worse* — it builds clean, returns 200 and nobody compares it to what it replaced |
 | Mobile | Verified on a real device, not only emulated widths — including a short/landscape viewport |
-| Performance | Measured on the deployed site. `npm run verify` reports page weight, render-blocking counts and whether the first substantial image is lazy — the inputs. Lighthouse supplies the timing. Any deliberate delay (splash, overlay, gate) costed in LCP and reported |
+| Performance | Measured on the deployed site. `npm run verify` reports page weight, render-blocking counts and whether the first substantial image is lazy — the inputs. Lighthouse supplies the timing. **Target: LCP < 1.0s desktop and < 2.5s mobile, CLS < 0.1, on the home page and one page per family** (PageSpeed Insights, recorded). On a migration, legacy uploads follow §5b — not served at original weight. Any deliberate delay (splash, overlay, gate) costed in LCP and reported |
 | Rebuild | Deleting and recreating the deployment target from the repo produces a working site |
 
 That last row is the real test of the configuration. If recreating requires undocumented

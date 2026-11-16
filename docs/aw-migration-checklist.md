@@ -22,6 +22,8 @@ Use one copy per client in that site's repository, not in this public kit. See [
 - [ ] Set `forms.choice` explicitly to `none` or `private_crm`. If enabled, use same-origin `POST /api/leads` + Turnstile Siteverify + a site-specific adapter to AW's existing private CRM; ordinary pages remain prerendered and only API routes are on-demand. No email/Slack/Brevo notification transport is mandatory.
 - [ ] The retained contact code is still a KV-only implementation draft, not the CRM integration and not proven end-to-end. Do not enable or claim it works unchanged; require an implemented adapter, request limits, recovery/privacy behavior and staging tests first.
 - [ ] For `private_crm`, verify API Worker-first routing, static page prerendering, staging noindex, production sitemap/robots/canonicals and a real static 404. A synthetic local adapter proves routing only, not hosted CRM delivery or browser form success.
+- [ ] Migrated media follows `skills/website-build/references/build.md` §5b: deploy only uploads that pages use; one WebP per legacy raster sized ~2× its measured rendered width (cap 1600px); every reference rewritten and the build failing on a missing one; old `.png`/`.jpg`/`-WxH` URLs 301 in one hop through one pattern rule; `/wp-content/uploads/*` cached immutable for a year. Never deploy the original uploads byte-for-byte as the served images.
+- [ ] Count deployed files against the Cloudflare plan cap (Workers Free: 20,000 per version, 25 MiB per file) before the first deploy, and record the count. Do not move to Workers Paid or R2 to fit unused media; back the unused media up outside the deploy instead.
 - [ ] Reconcile redirects, sitemap paths, robots directives, feeds, verification files, `ads.txt`, `.well-known`, title/description/canonical/language/schema and indexability.
 
 ## Minimum launch — blocking
@@ -29,6 +31,7 @@ Use one copy per client in that site's repository, not in this public kit. See [
 - [ ] Fresh staging and production builds use the host and distinct Worker target from the manifest; placeholder values, staging/production mixing and shared Worker names refuse.
 - [ ] Every inventoried source URL resolves, redirects to a reviewed destination, or has a recorded disposition. Route families, internal links, local media, alt text, downloads and real 404 status pass.
 - [ ] Staging is noindex and emits no production sitemap. Production canonicals, robots and sitemap use the verified production host.
+- [ ] Performance measured on the deployed staging site with PageSpeed Insights for the home page and one page per family: LCP < 1.0s desktop, < 2.5s mobile, CLS < 0.1; used-media bytes before/after and no deployed raster over 200 KB without a recorded reason.
 - [ ] Run accessibility, keyboard/focus, contrast and reflow checks; review representative desktop/mobile screenshots and browser console/network failures.
 - [ ] Record site acceptance criteria, who/when, a rollback snapshot, WordPress origin and restore steps in the site repo/manifest. Preserve the WordPress origin through the recovery window.
 - [ ] If forms are `none`, no form delivery, CRM, Turnstile or notification provider is a launch blocker. If forms are `private_crm`, test the full enabled path without sending unapproved real personal data.

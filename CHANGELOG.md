@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-16 — Migrated media must not ship at WordPress weight (unreleased)
+
+A migration copied the WordPress uploads that pages use byte-for-byte to stay under the Workers
+Free 20,000-file cap: 9,521 files, 9,463 of them PNG, 2.9 GB, with ~270px thumbnails served as
+full-size PNGs. Pages were visibly slow and nothing in the kit flagged it, because the media
+rules covered `media/source/` only. Added `build.md` §5b (one WebP per used legacy upload at ~2×
+its measured rendered width, references rewritten with a failing check, old URLs 301 in one hop
+through one pattern rule, year-long immutable caching, LCP image never lazy), the same items in
+the AW migration checklist, a recorded PageSpeed target (LCP < 1.0s desktop, < 2.5s mobile,
+CLS < 0.1), and a `/wp-content/uploads/*` cache rule in the template `_headers`. Same site
+after the change: 99 MB.
+
 ## 2026-11-06 — AW migration process (unreleased)
 
 Added a reusable AW migration process and per-site checklist. AW content remains file-based with
