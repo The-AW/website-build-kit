@@ -23,6 +23,9 @@
     "redirects": "public/_redirects",
     "redirectExceptions": []
   },
+  "media": {
+    "legacyUploads": false
+  },
   "forms": {
     "choice": "none",
     "crmAdapter": ""

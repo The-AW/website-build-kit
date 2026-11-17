@@ -4235,6 +4235,229 @@ gate('a comments-only file is not a failure', {
 
 
 /* ────────────────────────────────────────────────────────────────────────
+ * Migrated media (build.md §5b) — manifest flag `media.legacyUploads`
+ *
+ * The whole pipeline, with a Worker and a real 404, runs in
+ * template/scripts/test-legacy-media.mjs (`npm run test:legacy-media`). What is
+ * here is each gate's REFUSAL, so the coverage ledger sees them and a gate that
+ * can no longer say no is caught the same way as every other one.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+const STRIP_TYPES = { NODE_OPTIONS: '--experimental-strip-types --no-warnings' };
+const legacyManifest = (flag = true) => awManifest({ media: { legacyUploads: flag } });
+const legacyConfig = (env, over = {}) => {
+  const base = JSON.parse(awConfig(env, false));
+  return JSON.stringify({ ...base, main: '../src/legacy-worker.ts', assets: { ...base.assets, binding: 'ASSETS', not_found_handling: 'none' }, ...over });
+};
+
+describe('check-env, media.legacyUploads');
+
+gate('flag on: not_found none + ASSETS + Worker entrypoint passes', {
+  script: 'check-env.mjs',
+  files: { 'aw-migration.json': legacyManifest(), 'src/legacy-worker.ts': '', '.aw/wrangler-staging.jsonc': legacyConfig('staging') },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 0,
+});
+
+gate('flag on but the config still says 404-page — must refuse', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': legacyManifest(), 'src/legacy-worker.ts': '',
+    '.aw/wrangler-staging.jsonc': legacyConfig('staging', { assets: { directory: '/tmp/dist', binding: 'ASSETS', not_found_handling: '404-page' } }),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'not_found_handling: none',
+});
+
+gate('flag on with no Worker entrypoint in the config — must refuse', {
+  script: 'check-env.mjs',
+  files: { 'aw-migration.json': legacyManifest(), 'src/legacy-worker.ts': '', '.aw/wrangler-staging.jsonc': legacyConfig('staging', { main: undefined }) },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'Worker entrypoint',
+});
+
+gate('flag off but the config says not_found none — must refuse (a real 404 needs a Worker that serves it)', {
+  script: 'check-env.mjs',
+  files: { 'aw-migration.json': legacyManifest(false), '.aw/wrangler-staging.jsonc': legacyConfig('staging') },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'real 404 with not_found_handling: 404-page',
+});
+
+gate('flag on with no Worker source file at all — must refuse', {
+  script: 'check-env.mjs',
+  files: { 'aw-migration.json': legacyManifest(), '.aw/wrangler-staging.jsonc': legacyConfig('staging') },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'neither src/legacy-worker.ts nor src/worker.ts exists',
+});
+
+describe('check-file-count');
+
+gate('under the cap passes', {
+  script: 'check-file-count.mjs',
+  files: { 'dist/index.html': 'x', 'dist/a.webp': 'x' },
+  expect: 0,
+  contains: '2 of 20,000 files',
+});
+
+gate('over the cap — must refuse before the deploy finds out', {
+  script: 'check-file-count.mjs',
+  files: { 'dist/index.html': 'x', 'dist/a.webp': 'x', 'dist/b.webp': 'x' },
+  args: ['--limit=2'],
+  expect: 1,
+  contains: 'over the 2-file cap',
+});
+
+gate('no build output — must refuse', {
+  script: 'check-file-count.mjs',
+  files: { 'README.md': 'x' },
+  expect: 1,
+  contains: 'run the build first',
+});
+
+describe('check-legacy-media');
+
+const legacyDist = { 'dist/404.html': '<main>404</main>', 'dist/index.html': '<main>x</main>', 'public/_headers': '/wp-content/uploads/*\n  Cache-Control: public, max-age=31536000, immutable\n' };
+
+gate('404 page, one-hop attachment map and immutable uploads pass', {
+  script: 'check-legacy-media.mjs',
+  files: { ...legacyDist, 'src/data/attachment-redirects.json': '{"/slug/":"/"}' },
+  expect: 0,
+});
+
+gate('no 404.html — must refuse (the Worker would have nothing to serve)', {
+  script: 'check-legacy-media.mjs',
+  files: { 'dist/index.html': 'x', 'public/_headers': legacyDist['public/_headers'] },
+  expect: 1,
+  contains: '404.html is missing',
+});
+
+gate('attachment redirect that chains through another — must refuse', {
+  script: 'check-legacy-media.mjs',
+  files: { ...legacyDist, 'src/data/attachment-redirects.json': '{"/a/":"/b/","/b/":"/"}' },
+  expect: 1,
+  contains: 'two hops',
+});
+
+gate('uploads not cached immutable — must refuse', {
+  script: 'check-legacy-media.mjs',
+  files: { ...legacyDist, 'public/_headers': '/*\n  X-Test: 1\n' },
+  expect: 1,
+  contains: 'immutable',
+});
+
+describe('legacy-media-stage');
+
+gate('refuses without the originals directory', {
+  script: 'legacy-media-stage.mjs',
+  files: { 'aw-migration.json': legacyManifest(), 'dist/index.html': '<img src="/wp-content/uploads/2024/01/a.png">' },
+  env: STRIP_TYPES,
+  expect: 1,
+  contains: 'media/source/legacy/wp-content/uploads is missing',
+});
+
+gate('refuses a page that names an upload with no original', {
+  script: 'legacy-media-stage.mjs',
+  files: {
+    'aw-migration.json': legacyManifest(),
+    'dist/index.html': '<img src="/wp-content/uploads/2024/01/ghost.png">',
+    'media/source/legacy/wp-content/uploads/2024/01/other.png': 'x',
+  },
+  env: STRIP_TYPES,
+  expect: 1,
+  contains: 'ghost.png: referenced by a page, no such original',
+});
+
+gate('stages exactly what the pages use, and no more', {
+  script: 'legacy-media-stage.mjs',
+  files: {
+    'aw-migration.json': legacyManifest(),
+    'dist/index.html': '<img src="/wp-content/uploads/2024/01/a.png" srcset="/wp-content/uploads/2024/01/a-300x200.png 300w">',
+    'media/source/legacy/wp-content/uploads/2024/01/a.png': 'x',
+    'media/source/legacy/wp-content/uploads/2024/01/unused.png': 'x',
+  },
+  env: STRIP_TYPES,
+  expect: 0,
+  contains: '1 original files used',
+  then: (dir) => (existsSync(join(dir, '.aw/legacy-src/wp-content/uploads/2024/01/unused.png')) ? 'staged an upload no page uses' : null),
+});
+
+gate('free-disk floor — must refuse rather than copy into a full disk', {
+  script: 'legacy-media-stage.mjs',
+  files: {
+    'aw-migration.json': legacyManifest(),
+    'dist/index.html': '<img src="/wp-content/uploads/2024/01/a.png">',
+    'media/source/legacy/wp-content/uploads/2024/01/a.png': 'x',
+  },
+  env: { ...STRIP_TYPES, LEGACY_MEDIA_MIN_FREE_GB: '999999999' },
+  expect: 1,
+  contains: 'below the',
+});
+
+describe('webp-legacy-media');
+
+gate('refuses without staged originals', {
+  script: 'webp-legacy-media.mjs',
+  files: { 'aw-migration.json': legacyManifest() },
+  env: STRIP_TYPES,
+  expect: 1,
+  contains: 'run scripts/legacy-media-stage.mjs first',
+});
+
+describe('link-legacy-media');
+
+gate('refuses without a build', {
+  script: 'link-legacy-media.mjs',
+  files: { 'aw-migration.json': legacyManifest() },
+  expect: 1,
+  contains: 'run the build first',
+});
+
+gate('free-disk floor — must refuse', {
+  script: 'link-legacy-media.mjs',
+  files: { 'dist/index.html': 'x', '.aw/legacy-media/wp-content/uploads/a.webp': 'x' },
+  env: { LEGACY_MEDIA_MIN_FREE_GB: '999999999' },
+  expect: 1,
+  contains: 'below the',
+});
+
+describe('rewrite-webp-refs');
+
+gate('refuses without the converter\'s manifest', {
+  script: 'rewrite-webp-refs.mjs',
+  files: { 'aw-migration.json': legacyManifest(), 'dist/index.html': 'x' },
+  env: STRIP_TYPES,
+  expect: 1,
+  contains: 'run legacy-media-stage and webp-legacy-media first',
+});
+
+gate('a reference to a file that is not deployed fails the build', {
+  script: 'rewrite-webp-refs.mjs',
+  files: {
+    'aw-migration.json': legacyManifest(),
+    '.aw/webp-manifest.json': '{}',
+    '.aw/legacy-used.json': '{"paths":[]}',
+    'dist/index.html': '<img src="/wp-content/uploads/2024/01/ghost.gif" alt="">',
+  },
+  env: STRIP_TYPES,
+  expect: 1,
+  contains: 'ghost.gif, which is not in dist',
+});
+
+describe('measure-image-widths');
+
+gate('refuses without a build to measure', {
+  script: 'measure-image-widths.mjs',
+  files: { 'README.md': 'x' },
+  expect: 1,
+  contains: 'run the build first',
+});
+
+
+/* ────────────────────────────────────────────────────────────────────────
  * Report
  * ──────────────────────────────────────────────────────────────────────── */
 

@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   readMigrationManifest,
   validateMigrationManifest,
@@ -84,6 +85,9 @@ const selectedConfigErrors = validateWranglerDeployConfig(selectedConfig, target
 if (selectedConfigErrors.length) {
   refuse(`selected deploy config ${wranglerConfig} does not match the manifest's ${env} target.`, selectedConfigErrors);
 }
+
+/* The Workers static-assets file cap is enforced at upload, after the build has spent its minutes. */
+run(process.execPath, [fileURLToPath(new URL('./check-file-count.mjs', import.meta.url))], 'static-assets file count');
 
 /* Validate the exact file passed to Wrangler above, after Astro may have emitted
    a runtime config, and immediately before the deploy call below. */

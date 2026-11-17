@@ -33,6 +33,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import {
   formatTargetErrors,
+  usesLegacyUploads,
   readMigrationManifest,
   validateMigrationManifest,
   writeWranglerConfig,
@@ -158,6 +159,20 @@ step(process.execPath, ['scripts/check-cms.mjs']);
 step(process.execPath, ['scripts/check-contact.mjs']);
 
 run(['build']);
+
+/* Migrated WordPress uploads (build.md §5b), behind `media.legacyUploads`. After the build, because the
+   used set is read from the rendered pages; before every check below, so they read the final pages. */
+if (usesLegacyUploads(manifest)) {
+  const strip = ['--experimental-strip-types'];
+  step(process.execPath, [...strip, 'scripts/legacy-media-stage.mjs']);
+  step(process.execPath, [...strip, 'scripts/webp-legacy-media.mjs']);
+  step(process.execPath, ['scripts/link-legacy-media.mjs']);
+  step(process.execPath, [...strip, 'scripts/rewrite-webp-refs.mjs']);
+  step(process.execPath, ['scripts/check-file-count.mjs']);
+  step(process.execPath, ['scripts/check-legacy-media.mjs']);
+} else {
+  console.log(`${DIM}· media.legacyUploads is off; no migrated-media steps${RESET}`);
+}
 
 if (env === 'staging') {
   step(process.execPath, ['scripts/staging-headers.mjs']);

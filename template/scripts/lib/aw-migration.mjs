@@ -5,6 +5,19 @@ export const MANIFEST_FILE = 'aw-migration.json';
 export const CONFIG_DIR = '.aw';
 export const COMPATIBILITY_DATE = '2026-07-01';
 
+/**
+ * media.legacyUploads (build.md §5b): a migrated WordPress site whose pages use old
+ * `/wp-content/uploads/` URLs. The build stages the uploads that pages use, deploys each
+ * as one WebP, and the Worker answers the old URLs (`not_found_handling: "none"` plus an
+ * asset-miss handler). Off by default: every other site keeps `404-page` and no Worker.
+ */
+export const usesLegacyUploads = (manifest) => manifest?.media?.legacyUploads === true;
+/** Worker entry for a static site with legacy uploads; a site that also runs the contact API owns src/worker.ts. */
+export const LEGACY_WORKER_ENTRY = 'src/legacy-worker.ts';
+export const SITE_WORKER_ENTRY = 'src/worker.ts';
+export const legacyWorkerEntry = (cwd = process.cwd()) =>
+  existsSync(resolve(cwd, SITE_WORKER_ENTRY)) ? SITE_WORKER_ENTRY : LEGACY_WORKER_ENTRY;
+
 export function readMigrationManifest(cwd = process.cwd()) {
   const path = join(cwd, MANIFEST_FILE);
   if (!existsSync(path)) throw new Error(`${MANIFEST_FILE} not found in the project root.`);
@@ -89,6 +102,20 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
 
   const choice = manifest?.forms?.choice;
   if (!['none', 'private_crm'].includes(choice)) add('forms.choice must be "none" or "private_crm".');
+
+  const legacy = manifest?.media?.legacyUploads;
+  if (legacy !== undefined && typeof legacy !== 'boolean') add('media.legacyUploads must be true or false.');
+  if (legacy === true) {
+    if (!existsSync(join(cwd, LEGACY_WORKER_ENTRY)) && !existsSync(join(cwd, SITE_WORKER_ENTRY))) {
+      add(`media.legacyUploads is true but neither ${LEGACY_WORKER_ENTRY} nor ${SITE_WORKER_ENTRY} exists: with not_found_handling "none" something must answer an unknown URL.`);
+    }
+    // The contact runtime is Astro's own Worker; the asset-miss handler has to be wrapped around it by the site.
+    if (choice === 'private_crm') {
+      const entry = join(cwd, SITE_WORKER_ENTRY);
+      if (!existsSync(entry)) add(`media.legacyUploads with forms.choice private_crm needs a site-owned ${SITE_WORKER_ENTRY} that calls legacyRedirect() before Astro's handler (build.md §5b).`);
+      else if (!/legacyRedirect\s*\(/.test(readFileSync(entry, 'utf8'))) add(`${SITE_WORKER_ENTRY} must call legacyRedirect() (src/lib/legacy-uploads.ts); without it every old upload URL is a 404.`);
+    }
+  }
   if (choice === 'private_crm') {
     const leadsRoute = join(cwd, 'src/pages/api/leads.ts');
     const crmAdapter = manifest?.forms?.crmAdapter;
@@ -218,6 +245,7 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       environment,
       phase,
       runtimeEnabled: choice === 'private_crm',
+      legacyUploads: usesLegacyUploads(manifest),
     };
   }
   return {
@@ -229,6 +257,7 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
     environment,
     phase,
     runtimeEnabled: choice === 'private_crm',
+    legacyUploads: usesLegacyUploads(manifest),
   };
 }
 
@@ -236,6 +265,7 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
   const result = validateMigrationManifest(manifest, environment, { phase: 'build', cwd });
   if (!result.siteUrl || !result.worker) throw new Error(result.errors.join('\n'));
   const runtimeEnabled = manifest.forms.choice === 'private_crm';
+  const legacy = usesLegacyUploads(manifest);
   const assetsDirectory = resolve(cwd, runtimeEnabled ? 'dist/client' : 'dist');
   /** @type {Record<string, any>} */
   const config = {
@@ -248,8 +278,9 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
       directory: assetsDirectory,
       ...(runtimeEnabled
         ? { binding: 'ASSETS', run_worker_first: ['/api/*'] }
-        : {}),
-      not_found_handling: '404-page',
+        : legacy ? { binding: 'ASSETS' } : {}),
+      // "none" only with the asset-miss handler (src/lib/legacy-uploads.ts), which serves the real 404.
+      not_found_handling: legacy ? 'none' : '404-page',
       html_handling: 'auto-trailing-slash',
     },
     observability: { enabled: true },
@@ -257,6 +288,8 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
   };
   if (validId(result.accountId)) config.account_id = result.accountId;
   if (runtimeEnabled) config.compatibility_flags = ['nodejs_compat'];
+  // Relative to the generated file in .aw/.
+  if (legacy) config.main = `../${legacyWorkerEntry(cwd)}`;
   return config;
 }
 
@@ -281,6 +314,14 @@ export function validateWranglerDeployConfig(config, target, { requireWorkerEntr
   if (config.preview_urls !== false) {
     errors.push('preview_urls must be false so the Worker is not exposed on an alternate preview hostname.');
   }
+  if (target.legacyUploads) {
+    const assets = config.assets ?? {};
+    if (assets.binding !== 'ASSETS') errors.push('assets.binding must be ASSETS so the asset-miss handler can serve the 404 page and probe deployed uploads.');
+    if (assets.not_found_handling !== 'none') errors.push('media.legacyUploads needs assets.not_found_handling "none": the Worker answers old upload and attachment URLs, and serves the real 404 itself.');
+    if (typeof config.main !== 'string' || !config.main.trim()) errors.push('media.legacyUploads needs a Worker entrypoint (main): src/legacy-worker.ts, or a site-owned src/worker.ts.');
+  } else if (config.assets?.not_found_handling !== '404-page') {
+    errors.push('assets.not_found_handling must be 404-page to preserve a real static 404 response.');
+  }
   if (target.runtimeEnabled) {
     const assets = config.assets ?? {};
     const workerFirst = assets.run_worker_first;
@@ -289,9 +330,6 @@ export function validateWranglerDeployConfig(config, target, { requireWorkerEntr
     }
     if (!Array.isArray(workerFirst) || workerFirst.length !== 1 || workerFirst[0] !== '/api/*') {
       errors.push('assets.run_worker_first must be exactly ["/api/*"] so only on-demand API routes reach Astro first.');
-    }
-    if (assets.not_found_handling !== '404-page') {
-      errors.push('assets.not_found_handling must be 404-page to preserve a real static 404 response.');
     }
     if (requireWorkerEntrypoint && (typeof config.main !== 'string' || !config.main.trim())) {
       errors.push('selected server deploy config must include the Astro Worker main entrypoint.');

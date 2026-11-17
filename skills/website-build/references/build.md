@@ -409,7 +409,7 @@ The default for migrated uploads:
    if any reference points at a file that is not deployed.**
 5. **Keep the old URLs with one pattern rule, not per-file redirects.** `.png`/`.jpg`/`.jpeg`
    and `-WxH` variant URLs 301 in **one hop** to the deployed WebP, from the Worker's
-   asset-miss handler. Unit-test originals, used variants, `-scaled`, percent-encoding,
+   asset-miss handler (the tools below ship it). Unit-test originals, used variants, `-scaled`, percent-encoding,
    files deployed as they are, and real 404s.
 6. **Cache uploads for a year.** Add `/wp-content/uploads/*` to `public/_headers` with
    `public, max-age=31536000, immutable`. Uploads are named by path and never replaced in
@@ -422,10 +422,52 @@ The default for migrated uploads:
    reflows the heading and costs CLS; preload the one face that sets the LCP text, not every
    face — preloading all of them was measured to delay LCP.
 
+**The tools.** Everything above is in the template, behind one manifest flag, **off by default**
+(`"media": { "legacyUploads": true }` in `aw-migration.json`). Off, the build, the gates and the
+generated Worker config are exactly the kit's own. On, put the originals the old site served in
+`media/source/legacy/wp-content/uploads/` (path = the old URL path; outside Git, and **never
+`public/`**, which Astro copies into `dist/`), and `npm run build:staging` runs, after `astro build`:
+
+| Step | Command | What it does |
+|---|---|---|
+| Stage | `npm run legacy:stage` | Reads the **built** pages for every `/wp-content/uploads/…` reference (`src`, `srcset`, CSS `url()`, `og:`, JSON-LD, any text file) and hard-links exactly those originals into `.aw/legacy-src/` — no copy. A reference with no original, or an original whose bytes differ from the `sha256` in `recon/media.csv`, fails. Refuses below a free-disk floor |
+| Measure | `npm run legacy:widths` | Largest rendered width per image, in real Chrome at 390/768/1440, images blocked. **Committed data** (`src/data/image-render-widths.json`), re-run when layout changes — not on every build. Resumable. `-- --backgrounds` for CSS-background heroes |
+| Convert | `npm run legacy:webp` | One WebP per PNG/JPG: ~2× the measured width, cap 1600, never upscaled, quality 78, alpha kept, cached by content hash (a repeat run converts nothing). GIF, SVG, WebP, AVIF and favicon/touch-icon PNGs are deployed as they are |
+| Link | `npm run legacy:link` | Hard-links the result into `dist/` (copy-on-write clone if the volume forbids it, then refuses) |
+| Rewrite | `npm run legacy:rewrite` | Rewrites every reference to the deployed WebP, rebuilds `srcset` from files that exist, sets `height` from the file, gives the first image in `<main>` `fetchpriority="high"` and no `loading="lazy"`, preloads a CSS-background hero. **Fails the build on any upload reference, of any type, that is not a deployed file** |
+| Count | `npm run check:file-count` | Files in `dist/` against the Workers Free cap of 20,000 (and 25 MiB per file). Also runs before `wrangler deploy`. `--limit=100000` on a Paid account only |
+| Contract | `npm run check:legacy-media` | A `404.html` exists; every attachment redirect resolves in one hop; `/wp-content/uploads/*` is cached immutable |
+
+Free disk: set `LEGACY_MEDIA_MIN_FREE_GB` (default 3) for the floor and
+`LEGACY_MEDIA_DISK_WAIT_MINUTES` to pause and poll instead of refusing at once.
+`LEGACY_MEDIA_ALLOW_MISSING=1` downgrades a missing original to a warning while downloads
+continue — never for a production build.
+
+**The Worker.** The flag is also a supported Worker option. With it on, the generated config
+is `assets.not_found_handling: "none"` + `assets.binding: "ASSETS"` + a `main` entry, and
+Cloudflare invokes the Worker **only for a request that matches no deployed file**
+(`src/legacy-worker.ts` → `src/lib/legacy-uploads.ts`): an old `.png`/`.jpg`/`-WxH`/`-scaled`
+URL gets one 301 to the WebP (`src/lib/upload-fallback.ts`, which asks the assets binding what
+is deployed, so there is no list to keep); an old attachment page `/<image-slug>/` gets a 301
+to its parent post from `src/data/attachment-redirects.json` (`{ "/slug/": "/target/" }`, built
+by the site's importer); **everything else is the prerendered 404 page with a 404 status**.
+Without the flag the config stays `404-page` and there is no Worker; the validator, `check-env`
+and `deploy-aw` refuse a config that disagrees with the flag in either direction.
+
+⚠ `"none"` removes Cloudflare's own 404 handling, so a bug in the handler does not look like an
+error: it looks like a 200 with the 404 page's body, which search engines index. That is why
+`npm run test:legacy-media` runs the generated Worker under `wrangler dev --local` and asserts
+the **status** of an unknown page, an unknown upload, a variant of an unknown upload and a
+`HEAD`. A site that also runs the contact API (`forms.choice: "private_crm"`) owns
+`src/worker.ts` and calls `legacyRedirect(request, env.ASSETS)` from `src/lib/legacy-uploads.ts`
+before Astro's handler; the generated config uses `src/worker.ts` when it exists, and the
+validator refuses it if it never calls `legacyRedirect`.
+
 *Gate (migration): used-media bytes before/after recorded; no deployed raster over 200 KB
-without a written reason; file count under the plan's cap with headroom; old upload URLs 301
-in one hop; PageSpeed Insights on the deployed staging site for the home page and one page
-per family — **LCP < 1.0s desktop, < 2.5s mobile, CLS < 0.1** — recorded in `BUILD-STATE.md`.*
+without a written reason; `npm run check:file-count` under the plan's cap with headroom; old
+upload URLs 301 in one hop; an unknown URL a real 404; PageSpeed Insights on the deployed
+staging site for the home page and one page per family — **LCP < 1.0s desktop, < 2.5s mobile,
+CLS < 0.1** — recorded in `BUILD-STATE.md`.*
 
 ### 6 · Integrations
 Forms, storage, anti-bot protection and analytics. Cloudflare Turnstile with server-side

@@ -47,7 +47,11 @@ if (config.workers_dev !== false) {
 if (config.preview_urls !== false) {
   fail(`${configPath} must set preview_urls: false to prevent alternate preview hostnames.`);
 }
-if (config.assets?.not_found_handling !== '404-page') {
+if (target.legacyUploads) {
+  if (config.assets?.not_found_handling !== 'none' || config.assets?.binding !== 'ASSETS' || typeof config.main !== 'string' || !config.main.trim()) {
+    fail(`${configPath} must pair not_found_handling: none with the ASSETS binding and a Worker entrypoint (main) when media.legacyUploads is true; the Worker serves the real 404.`);
+  }
+} else if (config.assets?.not_found_handling !== '404-page') {
   fail(`${configPath} must preserve a real 404 with not_found_handling: 404-page.`);
 }
 if (manifest.forms.choice === 'private_crm') {

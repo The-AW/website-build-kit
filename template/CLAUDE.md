@@ -96,6 +96,15 @@ that a `.parent > img` selector stops matching once there is a `<picture>` — s
 reference it by key (`photos/hero-home`) via `<Img />`. Never an external URL, never a raw
 path. This is what keeps `width`/`height` on every image so nothing shifts.
 
+**Migrated WordPress uploads are opt-in and never ship at their original weight.** Set
+`media.legacyUploads: true` in `aw-migration.json` only for a migration whose pages reference
+`/wp-content/uploads/…`; originals go in `media/source/legacy/wp-content/uploads/` (never
+`public/`). The build then stages the uploads the built pages use, deploys each as one WebP,
+rewrites every reference and fails on a missing file, checks the file count against the Workers
+Free cap, and serves old URLs through `src/legacy-worker.ts` (`not_found_handling: "none"`; an
+unknown URL is still a real 404). `build.md` §5b has the steps and `npm run test:legacy-media`
+proves the Worker. Upload filenames are cached immutable for a year, so a replaced image gets a new name.
+
 **The static default has no contact form runtime, KV archive or Turnstile requirement.** The
 retained `modules/contact/` code is an implementation draft that archives to KV; it is not AW's
 existing-private-CRM path and has not been proven end-to-end. Do not copy/enable it unchanged.

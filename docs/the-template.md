@@ -54,6 +54,9 @@ scripts/lib/inventory.mjs      the one parser for recon/urls.txt. paths or
 scripts/shots.mjs              before/after screenshots, both sides off recon/urls.txt,
                                paired into shots/index.html for the handover
 scripts/optimize-media.mjs     media/source → public/img as AVIF + WebP, plus a manifest
+scripts/legacy-media-stage.mjs  media.legacyUploads: stage the uploads the built pages use (build.md §5b)
+scripts/webp-legacy-media.mjs  ...one WebP each, ~2x the measured width; rewrite-webp-refs.mjs fails on a missing file
+scripts/check-file-count.mjs   files in dist/ against the Workers static-assets cap, before the deploy
 scripts/tells.mjs              what is still undecided, and design.md §3 checked mechanically
 scripts/check-env.mjs          manifest host/Worker vs generated .aw/wrangler-<env>.jsonc
 scripts/check-sitemap.mjs      staging noindex plus production sitemap/robots/canonical host

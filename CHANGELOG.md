@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-11-17 — Migrated-media tools (unreleased)
+
+`build.md` §5b said what a migration must do with its legacy uploads and left the doing to each
+site, which meant re-writing the same six scripts under deadline. They are now in the template,
+behind `media.legacyUploads: true` in `aw-migration.json` (**off by default**; off, nothing in the
+build, the gates or the generated Worker config changes). Generalised from the one migration that
+shipped them (9,521 used uploads, 2.9 GB → 99 MB, no URL lost):
+
+* `legacy:stage` finds the uploads the **built** pages use (`src`, `srcset`, CSS `url()`, `og:`,
+  JSON-LD) and hard-links them, with a free-disk guard that refuses (or pauses) below a floor;
+  `legacy:widths` measures rendered widths in real Chrome; `legacy:webp` writes one WebP per
+  PNG/JPG at ~2× that width (cap 1600, quality 78, alpha kept, content-hash cache; GIF/SVG/WebP/AVIF
+  and favicons untouched); `legacy:link` hard-links into `dist/`; `legacy:rewrite` rewrites
+  every reference, sets the first image `fetchpriority="high"`, preloads a CSS hero, and **fails
+  the build on any reference to a file that is not deployed**.
+* `not_found_handling: "none"` is now an explicit, validated choice with an asset-miss Worker
+  (`src/legacy-worker.ts`, `src/lib/upload-fallback.ts`): one-hop 301 for `.png`/`.jpg`/`-WxH`/
+  `-scaled` and for old attachment pages, and a real 404 for everything else. `check-env`,
+  `deploy-aw` and the manifest validator refuse a config that disagrees with the flag.
+* `check:file-count` (Workers Free: 20,000 files, 25 MiB each) runs in the build and before
+  `wrangler deploy`; `check:legacy-media` checks the 404 page, one-hop attachment redirects and the
+  immutable uploads header.
+* `npm run test:legacy-media` runs the whole pipeline on a fixture with the flag on and the
+  generated Worker under `wrangler dev --local`, asserting the **status** of unknown pages and
+  uploads (a 200 with a 404 body was the failure to catch); `test:gates` gained each gate's refusal.
+
 ## 2026-11-16 — Migrated media must not ship at WordPress weight (unreleased)
 
 A migration copied the WordPress uploads that pages use byte-for-byte to stay under the Workers
