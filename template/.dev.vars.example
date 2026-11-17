@@ -1,2 +1,8 @@
 # The static starter has no runtime secrets. Create .dev.vars only for an
 # explicitly enabled site-specific contact module; never commit that file.
+#
+# forms.choice "d1_leads" needs these two. Uncomment them for local `wrangler dev`, and set the same
+# names as Worker secrets (`npx wrangler secret put NAME --name <worker>`); never put them in
+# aw-migration.json or wrangler vars. Uncommented, `npm run check:secrets` requires them on the Worker.
+#   TURNSTILE_SECRET_KEY=            the secret for this host's Turnstile widget
+#   LEADS_RATE_LIMIT_HMAC_SECRET=    at least 32 random bytes, e.g. `openssl rand -base64 48`

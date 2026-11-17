@@ -32,7 +32,9 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import {
+  contactRuntime,
   formatTargetErrors,
+  leadsEnabledFor,
   usesLegacyUploads,
   readMigrationManifest,
   validateMigrationManifest,
@@ -77,8 +79,21 @@ if (requestedUrl && requestedUrl !== target.siteUrl) {
   process.exit(1);
 }
 
-const contactEnabled = manifest.forms.choice === 'private_crm';
-if (contactEnabled && env === 'production' && !process.env.PUBLIC_TURNSTILE_SITE_KEY?.trim()) {
+const contactEnabled = contactRuntime(manifest);
+const d1Leads = manifest.forms.choice === 'd1_leads';
+/* d1_leads takes its public Turnstile key from the manifest (a key is per host, so per environment) and
+   needs it wherever the form accepts submissions: a production build whose form is still closed renders
+   without a widget and the API answers "unavailable". private_crm keeps reading the build environment. */
+const turnstileSiteKey = d1Leads ? (manifest.forms.turnstileSiteKeys?.[env]?.trim() ?? '') : (process.env.PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? '');
+if (d1Leads && leadsEnabledFor(manifest, env) && !turnstileSiteKey) {
+  console.error(
+    `\n${RED}✗ forms.turnstileSiteKeys.${env} is not set${RESET}\n\n` +
+      `  The enabled ${env} contact form requires its host-specific public Turnstile key.\n` +
+      '  The secret key is installed separately, as a Cloudflare Worker secret.\n',
+  );
+  process.exit(1);
+}
+if (contactEnabled && !d1Leads && env === 'production' && !process.env.PUBLIC_TURNSTILE_SITE_KEY?.trim()) {
   console.error(
     `\n${RED}✗ PUBLIC_TURNSTILE_SITE_KEY is not set${RESET}\n\n` +
       '  The enabled production contact module requires a public Turnstile widget key. Set it in\n' +
@@ -101,6 +116,7 @@ function step(command, args) {
       ...process.env,
       PUBLIC_SITE_ENV: env,
       PUBLIC_SITE_URL: target.siteUrl,
+      ...(d1Leads ? { PUBLIC_TURNSTILE_SITE_KEY: turnstileSiteKey } : {}),
       AW_CONTACT_ENABLED: contactEnabled ? 'true' : 'false',
       AW_WRANGLER_CONFIG: wranglerConfig,
     },
@@ -129,6 +145,7 @@ if (contactEnabled) {
     '--test',
     'scripts/test-turnstile.mjs',
     'scripts/test-origin.mjs',
+    ...(d1Leads ? ['scripts/test-leads.mjs', 'scripts/test-lead-api.mjs'] : []),
   ]);
 } else {
   console.log(`${DIM}· contact module disabled; no runtime form tests or Turnstile key required${RESET}`);

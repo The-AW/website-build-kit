@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-11-17 — `forms.choice: "d1_leads"` (unreleased)
+
+The only contact path the kit shipped was `private_crm`, which needs a CRM, a shared ingestion secret and a
+site-written adapter, plus a KV-only draft nobody could enable. A migrated site that needed none of that
+built its own. It is now a first-class option, **off unless `forms.choice` says so** (`private_crm` is
+untouched):
+
+* Template: `POST /api/leads` as one testable function (`src/lib/lead-api.ts`): HTTPS-only, exact Origin and
+  host, 16 KiB cap counted while reading, per-visitor rate limit before anything expensive (the Workers
+  rate-limiting binding keyed by an HMAC of the IP, not the IP), validation and consent, Turnstile Siteverify
+  with hostname and action, one parameterised INSERT; `migrations/0001_create_leads.sql`; `LeadForm.astro`.
+* Manifest and config: D1 database, Turnstile site key and rate-limiter namespace per environment; the
+  generated Worker config binds `LEADS_DB`, `LEADS_RATE_LIMITER` and the non-secret vars; the deploy
+  validator refuses secrets in vars, CRM vars, a missing binding or a config that opens production without
+  `forms.productionAcceptance`. Production is generated **closed** by default.
+* `npm run leads:staging` / `leads:production`: read-only, **masked by default** (`--reveal` for the person who
+  answers the enquiry). `npm run verify` probes the API without creating a row.
+* Tests: `test:form` now covers the whole handler (every refusal stores nothing); `test:leads` adds config
+  validation and the real migration against SQLite; `test:leads-worker` builds the template with the choice on
+  and runs the Worker. `test:gates` gained check-env and reader refusals.
+* Found by the new Windows run, and latent for `private_crm`: `build:staging` with any contact runtime died on
+  Windows in the Cloudflare adapter ("The URL must be of scheme file"), because `astro.config.mjs` passed
+  an absolute `D:\...` path as `configPath` and the adapter parses it as `new URL(path, root)`, where `D:`
+  is a scheme. POSIX paths survive by accident. It is now passed relative to the config, forward slashes.
+  Every contact-runtime build had only ever run on Linux and macOS; CI never built one.
+* Rate limiting is the Workers rate-limiting binding, as shipped on the migration this came from, not a
+  Durable Object. There is no retention job and no email/Slack delivery; the docs say so.
+
 ## 2026-11-17 — Migrated-media tools (unreleased)
 
 `build.md` §5b said what a migration must do with its legacy uploads and left the doing to each

@@ -69,6 +69,7 @@ let currentGate = null;
 function fixture(files) {
   const dir = mkdtempSync(join(tmpdir(), 'kit-gate-'));
   for (const [rel, body] of Object.entries(files)) {
+    if (body === undefined) continue;
     const full = join(dir, rel);
     mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, body);
@@ -4454,6 +4455,106 @@ gate('refuses without a build to measure', {
   files: { 'README.md': 'x' },
   expect: 1,
   contains: 'run the build first',
+});
+
+
+/* ────────────────────────────────────────────────────────────────────────
+ * forms.choice "d1_leads" — leads stored in the site's own D1 database
+ *
+ * The handler's every refusal is in template/scripts/test-lead-api.mjs, the manifest and deploy
+ * validation in test-leads-config.mjs, and a real build under wrangler dev in test-leads-worker.mjs
+ * (`npm run test:leads`, `npm run test:leads-worker`). Here: check-env on a d1_leads site, and the
+ * reader, which must refuse before it ever reaches wrangler.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+const d1Forms = (extra = {}) => ({
+  choice: 'd1_leads',
+  turnstileSiteKeys: { staging: '0x4AAAAAAAstaging000000', production: '0x4AAAAAAAproduction0000' },
+  leadsDatabases: {
+    staging: { name: 'client-leads-staging', id: '11111111-2222-4333-8444-555555555555' },
+    production: { name: 'client-leads', id: '66666666-7777-4888-8999-000000000000' },
+  },
+  rateLimiterNamespaceIds: { staging: '4001', production: '4002' },
+  ...extra,
+});
+const d1Files = (forms = d1Forms()) => ({
+  'aw-migration.json': awManifest({ forms }),
+  'src/pages/api/leads.ts': "export const prerender = false;\nexport { POST } from '../../lib/lead-route';\n",
+  'migrations/0001_create_leads.sql': '-- schema\n',
+});
+
+describe('check-env, forms.choice d1_leads');
+
+gate('a d1_leads site with the runtime config passes', {
+  script: 'check-env.mjs',
+  files: { ...d1Files(), '.aw/wrangler-staging.jsonc': awConfig('staging', true) },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 0,
+});
+
+gate('d1_leads without the API route — must refuse', {
+  script: 'check-env.mjs',
+  files: { ...d1Files(), 'src/pages/api/leads.ts': undefined, '.aw/wrangler-staging.jsonc': awConfig('staging', true) },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'src/pages/api/leads.ts is missing',
+});
+
+gate('d1_leads with a hand-written route that skips the kit handler — must refuse', {
+  script: 'check-env.mjs',
+  files: { ...d1Files(), 'src/pages/api/leads.ts': 'export const prerender = false;\nexport const POST = () => new Response("ok");\n', '.aw/wrangler-staging.jsonc': awConfig('staging', true) },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'must use the kit handler',
+});
+
+gate('d1_leads with no Turnstile key for the open environment — must refuse', {
+  script: 'check-env.mjs',
+  files: { ...d1Files(d1Forms({ turnstileSiteKeys: {} })), '.aw/wrangler-staging.jsonc': awConfig('staging', true) },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'turnstileSiteKeys.staging',
+});
+
+gate('d1_leads production opened without an acceptance record — must refuse', {
+  script: 'check-env.mjs',
+  files: { ...d1Files(d1Forms({ productionEnabled: true })), '.aw/wrangler-production.jsonc': awConfig('production', true) },
+  env: { PUBLIC_SITE_ENV: 'production' },
+  expect: 1,
+  contains: 'productionAcceptance is missing',
+});
+
+describe('leads reader');
+
+gate('no environment — usage error', {
+  script: 'leads.mjs',
+  files: { 'aw-migration.json': awManifest({ forms: d1Forms() }) },
+  expect: 1,
+  contains: 'usage: node scripts/leads.mjs',
+});
+
+gate('a site that does not store leads in D1 — must refuse', {
+  script: 'leads.mjs',
+  args: ['staging'],
+  files: { 'aw-migration.json': awManifest() },
+  expect: 1,
+  contains: 'forms.choice is not "d1_leads"',
+});
+
+gate('no database recorded for the environment — must refuse', {
+  script: 'leads.mjs',
+  args: ['production'],
+  files: { 'aw-migration.json': awManifest({ forms: d1Forms({ leadsDatabases: {} }) }) },
+  expect: 1,
+  contains: 'forms.leadsDatabases.production.name',
+});
+
+gate('a status that is not a plain word never reaches the query', {
+  script: 'leads.mjs',
+  args: ['staging', '--status', "new' OR '1'='1"],
+  files: { 'aw-migration.json': awManifest({ forms: d1Forms() }) },
+  expect: 1,
+  contains: '--status must be lowercase letters and underscores',
 });
 
 

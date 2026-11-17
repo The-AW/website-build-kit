@@ -44,7 +44,7 @@ if (existsSync('aw-migration.json')) {
   }
 }
 let expectedSiteUrl = process.env.PUBLIC_SITE_URL?.trim() || migrationManifest?.hosts?.[environment];
-const contactRuntime = migrationManifest?.forms?.choice === 'private_crm';
+const contactRuntime = ['private_crm', 'd1_leads'].includes(migrationManifest?.forms?.choice);
 let expectedOrigin = '';
 try {
   expectedOrigin = new URL(expectedSiteUrl).origin;
@@ -84,11 +84,11 @@ const routeFor = (file) =>
 if (contactRuntime) {
   const pagesRoot = 'src/pages';
   if (!existsSync(pagesRoot)) {
-    add('forms.choice private_crm requires src/pages so static routes can be verified.');
+    add('a contact runtime (forms.choice private_crm or d1_leads) requires src/pages so static routes can be verified.');
   } else {
     const routeFiles = walk(pagesRoot).filter((file) => /\.(?:astro|md|mdx|js|ts)$/.test(file));
     const apiFiles = routeFiles.filter((file) => relative(pagesRoot, file).split(sep).join('/').startsWith('api/'));
-    if (!apiFiles.length) add('forms.choice private_crm requires an on-demand API route under src/pages/api/.');
+    if (!apiFiles.length) add('a contact runtime (forms.choice private_crm or d1_leads) requires an on-demand API route under src/pages/api/.');
     for (const file of routeFiles) {
       const source = readFileSync(file, 'utf8');
       const route = relative(pagesRoot, file).split(sep).join('/');

@@ -1,5 +1,7 @@
 // @ts-check
 import { readFileSync } from 'node:fs';
+import { relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, sessionDrivers } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import sitemap from '@astrojs/sitemap';
@@ -12,7 +14,7 @@ import { noindexLegalRoutes } from './src/lib/legal-routes.mjs';
 // it and passes it through before Astro loads this config.
 const MIGRATION = JSON.parse(readFileSync(new URL('./aw-migration.json', import.meta.url), 'utf8'));
 const SITE_ENV = process.env.PUBLIC_SITE_ENV ?? 'development';
-const CONTACT_RUNTIME = MIGRATION.forms?.choice === 'private_crm';
+const CONTACT_RUNTIME = ['private_crm', 'd1_leads'].includes(MIGRATION.forms?.choice);
 
 /*
  * Refuse to BUILD for a deploy without saying which deploy it is.
@@ -54,6 +56,19 @@ const SITE_URL = process.env.PUBLIC_SITE_URL ??
       : 'http://localhost:4321');
 
 const isProduction = SITE_ENV === 'production';
+
+/*
+ * ⚠ The adapter does `new URL(configPath, root)`. build.mjs hands over an ABSOLUTE path, and on Windows
+ * `D:\site\.aw\wrangler-staging.jsonc` parses as a URL with the scheme `d:`, so the build dies in the
+ * adapter's `astro:config:setup` hook with "The URL must be of scheme file". POSIX paths survive by
+ * accident, which is why every contact-runtime build passed on Linux and macOS. Relative to this file, with
+ * forward slashes, resolves the same everywhere.
+ */
+function wranglerConfigPath() {
+  const absolute = process.env.AW_WRANGLER_CONFIG;
+  if (!absolute) return undefined;
+  return relative(fileURLToPath(new URL('.', import.meta.url)), absolute).split(sep).join('/');
+}
 
 /*
  * Per-page `lastmod` for the sitemap, from src/data/lastmod.json.
@@ -100,7 +115,7 @@ export default defineConfig({
   ...(CONTACT_RUNTIME
     ? {
         adapter: cloudflare({
-          configPath: process.env.AW_WRANGLER_CONFIG,
+          configPath: wranglerConfigPath(),
           imageService: 'passthrough',
         }),
       }

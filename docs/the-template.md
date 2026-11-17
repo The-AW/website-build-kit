@@ -112,7 +112,7 @@ adapter and has not been proven end-to-end. Do not enable it unchanged. A site-s
 use a same-origin API, Turnstile Siteverify and a site-specific adapter to AW's existing private
 CRM. No email/Slack/Brevo notification provider is mandatory. A static migration with
 `forms.choice: "none"` is not blocked by optional contact work. `npm run test:turnstile`,
-`npm run test:origin` and `npm run test:form` cover helper behavior only; they do not prove CRM
+`npm run test:origin` and `npm run test:form` cover helper behavior only (for `d1_leads`, `test:form` also drives the whole `/api/leads` handler against stand-ins); they do not prove CRM
 delivery or end-to-end contact success.
 
 The default CSP explicitly permits Turnstile's iframe and intentionally does not restrict scripts.
@@ -251,6 +251,9 @@ where you look at half-finished work.
 
 - [ ] Static migrations (`forms.choice: "none"`) need no Turnstile key, Worker secret, KV archive,
       email/Slack provider or contact runtime; optional modules do not block launch.
+- [ ] If `forms.choice: "d1_leads"`, follow `docs/aw-migration-process.md` (D1 database, Turnstile widget, two
+      Worker secrets, the two-line route, `LeadForm`), submit once on staging and read the row with
+      `npm run leads:staging`. No CRM is involved.
 - [ ] If `forms.choice: "private_crm"`, implement a same-origin API, Turnstile Siteverify and a
       site-specific adapter to AW's existing private CRM; test invalid/expired/replayed tokens,
       service outage, request limits, recovery and staging/production hostname behavior. The

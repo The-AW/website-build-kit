@@ -1070,7 +1070,7 @@ if (fontRes.status !== 404) {
 let contactChoice = 'legacy';
 try {
   const choice = JSON.parse(readFileSync('aw-migration.json', 'utf8')).forms?.choice;
-  if (choice === 'none' || choice === 'private_crm') contactChoice = choice;
+  if (choice === 'none' || choice === 'private_crm' || choice === 'd1_leads') contactChoice = choice;
 } catch {
   // Older, non-AW projects without the AW manifest retain the established route probes.
 }
@@ -1082,6 +1082,21 @@ if (contactChoice === 'none') {
 } else if (contactChoice === 'private_crm') {
   section('Optional contact API');
   notes.push('Site-specific /api/leads checks are deferred: this generic verifier does not POST to a CRM; use an approved staging test and record the evidence.');
+} else if (contactChoice === 'd1_leads') {
+  section('Contact API (d1_leads) — no row is created');
+  /* Both probes fail before Siteverify and the insert, so nothing is stored and no personal data is sent.
+     A site whose form is still closed (production before forms.productionEnabled) answers 500
+     "unavailable" to everything, which is the safe state, so that is accepted and reported. */
+  const empty = await req('/api/leads', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  const closed = empty.status === 500;
+  record('POST /api/leads with an empty body is refused, never accepted',
+    empty.status === 400 || closed,
+    `HTTP ${empty.status}${closed ? ' (form closed: LEADS_ENABLED is false in this environment)' : ''}`);
+  const foreign = await req('/api/leads', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://attacker.invalid' }, body: '{}' });
+  record('POST /api/leads from a foreign Origin is refused', foreign.status === 403 || foreign.status === 500, `HTTP ${foreign.status}`);
+  const wrongType = await req('/api/leads', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'x' });
+  record('POST /api/leads that is not JSON is refused', [400, 403, 500].includes(wrongType.status), `HTTP ${wrongType.status}`);
+  if (closed) notes.push('/api/leads answers "unavailable": the form is closed here. Production opens with forms.productionEnabled plus a recorded acceptance.');
 } else {
   section('Form (non-destructive submissions only)');
 

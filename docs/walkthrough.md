@@ -304,6 +304,7 @@ The gates are real stops:
 ● Optional contact gate
 
   forms.choice = none                 → no form endpoint, Turnstile key or CRM check; static launch continues
+  forms.choice = d1_leads             → same-origin API + Turnstile + rate limit + a row in the site's own D1 (no CRM)
   forms.choice = private_crm          → same-origin API + Turnstile + existing private CRM adapter
   Negative requests                  → invalid token / malformed body / cross-origin are refused
   Valid end-to-end CRM submission    → must be proven with approved staging data before claiming complete

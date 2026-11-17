@@ -183,6 +183,17 @@ jobs:
         working-directory: template
         run: npm run test:legacy-media
 
+      # forms.choice "d1_leads": the whole /api/leads handler against stand-ins (every refusal must store
+      # nothing), the manifest/deploy validation, the real migration on SQLite, then the template BUILT with the
+      # choice on and run under `wrangler dev --local`. That last one swaps aw-migration.json and deletes dist/
+      # in place and restores them, so it stays BEFORE the clean build below.
+      - name: Contact form (d1_leads)
+        working-directory: template
+        run: |
+          npm run test:form
+          npm run test:leads
+          npm run test:leads-worker
+
       - name: Template builds from clean
         working-directory: template
         env:

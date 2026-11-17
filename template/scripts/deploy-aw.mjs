@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
+  contactRuntime,
   readMigrationManifest,
   validateMigrationManifest,
   validateWranglerDeployConfig,
@@ -71,7 +72,7 @@ if (sourceConfigErrors.length) {
   refuse(`${configPath} does not match the manifest's ${env} deploy target.`, sourceConfigErrors);
 }
 
-const wranglerConfig = manifest.forms.choice === 'private_crm'
+const wranglerConfig = contactRuntime(manifest)
   ? 'dist/server/wrangler.json'
   : configPath;
 if (!existsSync(wranglerConfig)) refuse(`expected generated deploy config ${wranglerConfig} is missing.`);

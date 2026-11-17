@@ -6,6 +6,57 @@ export const CONFIG_DIR = '.aw';
 export const COMPATIBILITY_DATE = '2026-07-01';
 
 /**
+ * Contact runtimes (Astro server output, /api/* Worker-first):
+ *  - `private_crm`: forward to AW's existing private CRM through a site-written adapter.
+ *  - `d1_leads`: store each lead in the site's OWN Cloudflare D1 database (binding LEADS_DB,
+ *    schema in migrations/). No CRM and no shared secret. The simple default when no CRM is
+ *    required. The runtime pieces ship in the template (src/lib/lead-api.ts and friends); the
+ *    site adds one route file and this manifest block.
+ */
+export const CONTACT_RUNTIME_CHOICES = ['private_crm', 'd1_leads'];
+export const contactRuntime = (manifest) => CONTACT_RUNTIME_CHOICES.includes(manifest?.forms?.choice);
+
+/** The two-line route that enables d1_leads (src/lib/lead-route.ts holds the handler). The prerender line is
+ *  written out because check-sitemap reads the route file for it: an API route must say it is on-demand. */
+export const D1_LEADS_ROUTE = "export const prerender = false;\nexport { POST } from '../../lib/lead-route';";
+
+/**
+ * Whether the lead API may accept submissions in this environment (d1_leads only).
+ *
+ * Staging is on so the form can be exercised. Production stays closed until
+ * `forms.productionEnabled` is true AND `forms.productionAcceptance` records the staging round
+ * trip that proves the chain works: the switch and the evidence for throwing it live in the same
+ * reviewed file. A closed form renders without a widget and the API answers "unavailable", which
+ * is a safe state to ship; a form that looks live and cannot submit is not.
+ */
+export function leadsEnabledFor(manifest, environment) {
+  if (manifest?.forms?.choice !== 'd1_leads') return false;
+  if (environment === 'staging') return true;
+  return manifest?.forms?.productionEnabled === true;
+}
+
+function acceptanceErrors(manifest) {
+  const errors = [];
+  const acceptance = manifest?.forms?.productionAcceptance;
+  if (!acceptance || typeof acceptance !== 'object' || Array.isArray(acceptance)) {
+    return ['forms.productionEnabled is true but forms.productionAcceptance is missing; record the staging acceptance that justifies it.'];
+  }
+  if (acceptance.stagingSubmissionVerified !== true) {
+    errors.push('forms.productionAcceptance.stagingSubmissionVerified must be true: submit the staging form and confirm the row arrived in D1.');
+  }
+  if (acceptance.testRecordDeleted !== true) {
+    errors.push('forms.productionAcceptance.testRecordDeleted must be true: delete the synthetic row after verifying it.');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(acceptance.acceptedOn ?? '')) {
+    errors.push('forms.productionAcceptance.acceptedOn must be the ISO date (YYYY-MM-DD) of that acceptance.');
+  }
+  if (typeof acceptance.acceptedBy !== 'string' || !acceptance.acceptedBy.trim()) {
+    errors.push('forms.productionAcceptance.acceptedBy must name the person who accepted it.');
+  }
+  return errors;
+}
+
+/**
  * media.legacyUploads (build.md §5b): a migrated WordPress site whose pages use old
  * `/wp-content/uploads/` URLs. The build stages the uploads that pages use, deploys each
  * as one WebP, and the Worker answers the old URLs (`not_found_handling: "none"` plus an
@@ -101,7 +152,41 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
   }
 
   const choice = manifest?.forms?.choice;
-  if (!['none', 'private_crm'].includes(choice)) add('forms.choice must be "none" or "private_crm".');
+  if (!['none', ...CONTACT_RUNTIME_CHOICES].includes(choice)) add('forms.choice must be "none", "private_crm" or "d1_leads".');
+  if (choice === 'd1_leads') {
+    const route = join(cwd, 'src/pages/api/leads.ts');
+    if (!existsSync(route)) add(`forms.choice is d1_leads but src/pages/api/leads.ts is missing. Create it with:\n${D1_LEADS_ROUTE}`);
+    else if (!/lead-route|handleLeadPost\s*\(/.test(readFileSync(route, 'utf8'))) {
+      add('The /api/leads route must use the kit handler (src/lib/lead-route.ts or handleLeadPost) for forms.choice d1_leads; a hand-written route skips the origin, rate-limit and Turnstile checks.');
+    }
+    if (!existsSync(join(cwd, 'migrations'))) add('forms.choice d1_leads needs the leads schema in migrations/.');
+    const siteKey = manifest?.forms?.turnstileSiteKeys?.[environment];
+    const db = manifest?.forms?.leadsDatabases?.[environment];
+    const namespace = manifest?.forms?.rateLimiterNamespaceIds?.[environment];
+    if (leadsEnabledFor(manifest, environment)) {
+      if (typeof siteKey !== 'string' || !siteKey.trim()) add(`forms.turnstileSiteKeys.${environment} must contain the public Turnstile site key for that host.`);
+      if (!db || typeof db.name !== 'string' || !db.name.trim() || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(db.id ?? '')) {
+        add(`forms.leadsDatabases.${environment} must name the D1 database (name and id) that stores this environment's leads.`);
+      }
+    }
+    if (typeof namespace !== 'string' || !/^[1-9][0-9]{0,15}$/.test(namespace)) {
+      add(`forms.rateLimiterNamespaceIds.${environment} must be a positive integer string, unique in the Cloudflare account (Workers rate limiting namespace_id).`);
+    }
+    const namespaces = manifest?.forms?.rateLimiterNamespaceIds ?? {};
+    if (namespaces.staging && namespaces.staging === namespaces.production) {
+      add('forms.rateLimiterNamespaceIds must differ between staging and production, or the two environments share one counter.');
+    }
+    if (manifest?.forms?.productionEnabled !== undefined && typeof manifest.forms.productionEnabled !== 'boolean') {
+      add('forms.productionEnabled must be a boolean.');
+    }
+    if (manifest?.forms?.productionEnabled === true) {
+      for (const error of acceptanceErrors(manifest)) add(error);
+      const keys = manifest?.forms?.turnstileSiteKeys ?? {};
+      if (keys.production && keys.production === keys.staging) add('forms.turnstileSiteKeys.production must be its own widget, not the staging site key.');
+      const dbs = manifest?.forms?.leadsDatabases ?? {};
+      if (dbs.production?.id && dbs.production.id === dbs.staging?.id) add('forms.leadsDatabases.production must be its own D1 database, not the staging one.');
+    }
+  }
 
   const legacy = manifest?.media?.legacyUploads;
   if (legacy !== undefined && typeof legacy !== 'boolean') add('media.legacyUploads must be true or false.');
@@ -110,9 +195,9 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       add(`media.legacyUploads is true but neither ${LEGACY_WORKER_ENTRY} nor ${SITE_WORKER_ENTRY} exists: with not_found_handling "none" something must answer an unknown URL.`);
     }
     // The contact runtime is Astro's own Worker; the asset-miss handler has to be wrapped around it by the site.
-    if (choice === 'private_crm') {
+    if (CONTACT_RUNTIME_CHOICES.includes(choice)) {
       const entry = join(cwd, SITE_WORKER_ENTRY);
-      if (!existsSync(entry)) add(`media.legacyUploads with forms.choice private_crm needs a site-owned ${SITE_WORKER_ENTRY} that calls legacyRedirect() before Astro's handler (build.md §5b).`);
+      if (!existsSync(entry)) add(`media.legacyUploads with a contact runtime (forms.choice private_crm or d1_leads) needs a site-owned ${SITE_WORKER_ENTRY} that calls legacyRedirect() before Astro's handler (build.md §5b).`);
       else if (!/legacyRedirect\s*\(/.test(readFileSync(entry, 'utf8'))) add(`${SITE_WORKER_ENTRY} must call legacyRedirect() (src/lib/legacy-uploads.ts); without it every old upload URL is a 404.`);
     }
   }
@@ -244,7 +329,9 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       zoneId: cloudflareTarget.zoneId ?? '',
       environment,
       phase,
-      runtimeEnabled: choice === 'private_crm',
+      runtimeEnabled: CONTACT_RUNTIME_CHOICES.includes(choice),
+      choice,
+      leadsEnabled: leadsEnabledFor(manifest, environment),
       legacyUploads: usesLegacyUploads(manifest),
     };
   }
@@ -256,7 +343,9 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
     worker: worker ?? null,
     environment,
     phase,
-    runtimeEnabled: choice === 'private_crm',
+    runtimeEnabled: CONTACT_RUNTIME_CHOICES.includes(choice),
+    choice,
+    leadsEnabled: leadsEnabledFor(manifest, environment),
     legacyUploads: usesLegacyUploads(manifest),
   };
 }
@@ -264,7 +353,7 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
 export function createWranglerConfig(manifest, environment, cwd = process.cwd()) {
   const result = validateMigrationManifest(manifest, environment, { phase: 'build', cwd });
   if (!result.siteUrl || !result.worker) throw new Error(result.errors.join('\n'));
-  const runtimeEnabled = manifest.forms.choice === 'private_crm';
+  const runtimeEnabled = contactRuntime(manifest);
   const legacy = usesLegacyUploads(manifest);
   const assetsDirectory = resolve(cwd, runtimeEnabled ? 'dist/client' : 'dist');
   /** @type {Record<string, any>} */
@@ -288,6 +377,19 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
   };
   if (validId(result.accountId)) config.account_id = result.accountId;
   if (runtimeEnabled) config.compatibility_flags = ['nodejs_compat'];
+  if (manifest.forms.choice === 'd1_leads') {
+    config.vars = {
+      LEADS_ENABLED: leadsEnabledFor(manifest, environment) ? 'true' : 'false',
+      LEADS_ALLOWED_ORIGINS: result.siteUrl,
+      TURNSTILE_ALLOWED_HOSTNAME: result.hostname,
+    };
+    // This environment's own leads database (migrations/ holds the schema). Secrets are never here.
+    const leadsDb = manifest.forms.leadsDatabases?.[environment];
+    if (leadsDb?.id) {
+      config.d1_databases = [{ binding: 'LEADS_DB', database_name: leadsDb.name, database_id: leadsDb.id, migrations_dir: '../migrations' }];
+    }
+    config.ratelimits = [{ name: 'LEADS_RATE_LIMITER', namespace_id: manifest.forms.rateLimiterNamespaceIds[environment], simple: { limit: 10, period: 60 } }];
+  }
   // Relative to the generated file in .aw/.
   if (legacy) config.main = `../${legacyWorkerEntry(cwd)}`;
   return config;
@@ -333,6 +435,33 @@ export function validateWranglerDeployConfig(config, target, { requireWorkerEntr
     }
     if (requireWorkerEntrypoint && (typeof config.main !== 'string' || !config.main.trim())) {
       errors.push('selected server deploy config must include the Astro Worker main entrypoint.');
+    }
+  }
+  if (target.choice === 'd1_leads') {
+    const vars = config.vars ?? {};
+    const expectedEnabled = target.leadsEnabled ? 'true' : 'false';
+    if (vars.LEADS_ENABLED !== expectedEnabled) {
+      errors.push(target.leadsEnabled
+        ? `vars.LEADS_ENABLED must be "true" for ${target.environment}: forms.productionEnabled is set with a recorded acceptance.`
+        : `vars.LEADS_ENABLED must keep ${target.environment} closed; set forms.productionEnabled with forms.productionAcceptance to open it.`);
+    }
+    if (vars.LEADS_ALLOWED_ORIGINS !== `https://${target.hostname}` || vars.TURNSTILE_ALLOWED_HOSTNAME !== target.hostname) {
+      errors.push('Form origin and Turnstile hostname vars must match this environment’s exact site host.');
+    }
+    if (['TURNSTILE_SECRET_KEY', 'LEADS_RATE_LIMIT_HMAC_SECRET', 'LEADS_INGESTION_SECRET'].some((name) => name in vars)) {
+      errors.push('Worker secrets must not be stored in Wrangler vars.');
+    }
+    if (Object.keys(vars).some((name) => /^LEADS_INGESTION/.test(name))) {
+      errors.push('forms.choice d1_leads stores leads in D1; CRM ingestion vars must not be configured.');
+    }
+    const leadsDb = (config.d1_databases ?? []).find((d) => d?.binding === 'LEADS_DB');
+    if (target.leadsEnabled && (!leadsDb || typeof leadsDb.database_id !== 'string' || !leadsDb.database_id)) {
+      errors.push('d1_leads with LEADS_ENABLED needs a LEADS_DB D1 binding for this environment.');
+    }
+    const limits = config.ratelimits ?? [];
+    if (limits.length !== 1 || limits[0]?.name !== 'LEADS_RATE_LIMITER' || limits[0]?.simple?.limit !== 10 ||
+        limits[0]?.simple?.period !== 60 || typeof limits[0]?.namespace_id !== 'string') {
+      errors.push('ratelimits must bind LEADS_RATE_LIMITER at 10 requests per 60 seconds.');
     }
   }
   return errors;

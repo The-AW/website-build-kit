@@ -17,6 +17,13 @@ type Bindings = {
   LEADS_STAGING?: KVNamespace;
   TURNSTILE_SECRET_KEY?: string;
   LEADS_EXPORT_TOKEN?: string;
+  /** forms.choice "d1_leads" (src/lib/lead-api.ts): non-secret vars, bindings and secrets. */
+  LEADS_ENABLED?: string;
+  LEADS_ALLOWED_ORIGINS?: string;
+  TURNSTILE_ALLOWED_HOSTNAME?: string;
+  LEADS_DB?: D1Database;
+  LEADS_RATE_LIMITER?: RateLimit;
+  LEADS_RATE_LIMIT_HMAC_SECRET?: string;
 };
 
 export function bindings(): Bindings {

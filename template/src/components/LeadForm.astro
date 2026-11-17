@@ -1,0 +1,507 @@
+---
+/**
+ * The contact form for `forms.choice: "d1_leads"`. Posts JSON to same-origin /api/leads
+ * (src/lib/lead-api.ts) with a Cloudflare Turnstile token. Structure and behaviour only: it
+ * uses the site's tokens and `.btn`, so the look is the site's own.
+ *
+ * Put it on the contact page: `import LeadForm from '../components/LeadForm.astro';`.
+ * Visitor-facing text is English here and in src/lib/lead-submission.ts (LEAD_MESSAGES);
+ * translate both for a non-English site. The form stays usable only with the public key:
+ * `forms.turnstileSiteKeys.<env>` in aw-migration.json reaches it as PUBLIC_TURNSTILE_SITE_KEY.
+ * With no key the button is disabled and says why, instead of looking live and failing.
+ *
+ * It needs JavaScript (a JSON POST); the <noscript> note points at the contact details instead.
+ */
+const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? '';
+---
+
+<noscript><p>This form needs JavaScript. Please use the contact details on this page instead.</p></noscript>
+
+<form class="form" data-contact-form>
+  <div class="form__grid">
+    <div class="field">
+      <label for="contact-name">Name <span aria-hidden="true">*</span></label>
+      <input id="contact-name" name="name" type="text" autocomplete="name" minlength="2" maxlength="120" placeholder="Your name" required aria-describedby="contact-name-error" />
+      <p class="field__error" id="contact-name-error" data-error-for="name" hidden></p>
+    </div>
+
+    <div class="field">
+      <label for="contact-email">Email <span aria-hidden="true">*</span></label>
+      <input id="contact-email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.org" required aria-describedby="contact-email-error" />
+      <p class="field__error" id="contact-email-error" data-error-for="email" hidden></p>
+    </div>
+
+    <div class="field field--full">
+      <label for="contact-phone">Phone (optional)</label>
+      <input id="contact-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" maxlength="40" placeholder="+1 555 0100" aria-describedby="contact-phone-error" />
+      <p class="field__error" id="contact-phone-error" data-error-for="phone" hidden></p>
+    </div>
+
+    <div class="field field--full">
+      <label for="contact-message">Message <span aria-hidden="true">*</span></label>
+      <textarea id="contact-message" name="message" rows="5" maxlength="5000" placeholder="How can we help?" required aria-describedby="contact-message-error"></textarea>
+      <p class="field__error" id="contact-message-error" data-error-for="message" hidden></p>
+    </div>
+  </div>
+
+  <div class="field field--consent">
+    <div class="field__checkbox">
+      <input id="contact-consent" name="consent" type="checkbox" required aria-describedby="contact-consent-error contact-consent-note" />
+      <label for="contact-consent">I agree that my details are used so the team can reply to this request. <span aria-hidden="true">*</span></label>
+    </div>
+    <p class="field__note" id="contact-consent-note">Your message is stored by us and used only to reply. Your IP address may be sent to Cloudflare for the security check. Replace this note with the retention period in your privacy policy.</p>
+    <p class="field__error" id="contact-consent-error" data-error-for="consent" hidden></p>
+  </div>
+
+  {
+    turnstileSiteKey ? (
+      <div class="form__challenge">
+        <p id="contact-turnstile-label">Security check: complete the Cloudflare check before sending.</p>
+        <div
+          data-turnstile
+          data-sitekey={turnstileSiteKey}
+          role="group"
+          aria-labelledby="contact-turnstile-label"
+        ></div>
+        <p class="field__error" data-turnstile-error hidden></p>
+      </div>
+    ) : (
+      <p class="form__warning" role="alert">The security check is not configured. Try again later.</p>
+    )
+  }
+
+  <div class="form__footer">
+    <button class="btn form__submit" type="submit" disabled={!turnstileSiteKey}>
+      <span data-submit-label>Send message</span>
+    </button>
+    <p class="form__required">* Required fields</p>
+  </div>
+
+  <div class="form__result" role="status" aria-live="polite" data-form-result hidden>
+    <div class="form__result-icon" aria-hidden="true">✓</div>
+    <p class="form__result-title" data-result-title></p>
+    <p class="form__result-body" data-result-body></p>
+    <button class="btn btn--outline form__result-reset" type="button" data-result-reset hidden>Send another message</button>
+  </div>
+</form>
+
+{turnstileSiteKey && (
+  <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+)}
+
+<script>
+  type TurnstileApi = {
+    render: (container: HTMLElement, options: Record<string, unknown>) => string;
+    reset: (widgetId?: string) => void;
+    remove?: (widgetId: string) => void;
+  };
+
+  let activeWidgetId: string | undefined;
+  let apiWaitTimer: number | undefined;
+
+  function setupContactForm() {
+    const form = document.querySelector<HTMLFormElement>('[data-contact-form]');
+    if (!form || form.dataset.initialized === 'true') return;
+    form.dataset.initialized = 'true';
+
+    const result = form.querySelector<HTMLElement>('[data-form-result]')!;
+    const submit = form.querySelector<HTMLButtonElement>('.form__submit')!;
+    const submitLabel = form.querySelector<HTMLElement>('[data-submit-label]')!;
+    const turnstileContainer = form.querySelector<HTMLElement>('[data-turnstile]');
+    const tokenError = form.querySelector<HTMLElement>('[data-turnstile-error]');
+    const originalLabel = submitLabel.textContent ?? 'Send message';
+
+    const clearErrors = () => {
+      form.querySelectorAll<HTMLElement>('[data-error-for]').forEach((node) => {
+        node.hidden = true;
+        node.textContent = '';
+        const control = node.closest('.field')?.querySelector<HTMLElement>('input, textarea');
+        control?.removeAttribute('aria-invalid');
+      });
+      if (tokenError) {
+        tokenError.hidden = true;
+        tokenError.textContent = '';
+      }
+    };
+
+    const showErrors = (errors: Record<string, string>) => {
+      let first: HTMLElement | null = null;
+      for (const [field, message] of Object.entries(errors)) {
+        const node = form.querySelector<HTMLElement>(`[data-error-for="${field}"]`);
+        if (!node) continue;
+        node.textContent = message;
+        node.hidden = false;
+        const control = node.closest('.field')?.querySelector<HTMLElement>('input, textarea');
+        if (control) {
+          control.setAttribute('aria-invalid', 'true');
+          if (!first) first = control;
+        }
+      }
+      first?.focus();
+    };
+
+    const resultTitle = form.querySelector<HTMLElement>('[data-result-title]')!;
+    const resultBody = form.querySelector<HTMLElement>('[data-result-body]')!;
+    const resultReset = form.querySelector<HTMLButtonElement>('[data-result-reset]')!;
+    const formGrid = form.querySelector<HTMLElement>('.form__grid')!;
+    const formConsent = form.querySelector<HTMLElement>('.field--consent')!;
+    const formChallenge = form.querySelector<HTMLElement>('.form__challenge');
+    const formFooter = form.querySelector<HTMLElement>('.form__footer')!;
+    const formRequired = form.querySelector<HTMLElement>('.form__required');
+
+    const say = (message: string, tone: 'success' | 'error') => {
+      if (tone === 'success') {
+        formGrid.hidden = true;
+        formConsent.hidden = true;
+        if (formChallenge) formChallenge.hidden = true;
+        formFooter.hidden = true;
+        resultTitle.textContent = 'Message sent!';
+        resultBody.textContent = message;
+        resultReset.hidden = false;
+      } else {
+        resultTitle.textContent = '';
+        resultBody.textContent = message;
+        resultReset.hidden = true;
+      }
+      result.dataset.tone = tone;
+      result.hidden = false;
+    };
+
+    resultReset.addEventListener('click', () => {
+      result.hidden = true;
+      result.dataset.tone = '';
+      formGrid.hidden = false;
+      formConsent.hidden = false;
+      if (formChallenge) formChallenge.hidden = false;
+      formFooter.hidden = false;
+      resultReset.hidden = true;
+      resetTurnstile();
+    });
+
+    const turnstile = (window as Window & { turnstile?: TurnstileApi }).turnstile;
+    const resetTurnstile = () => {
+      if (turnstileContainer) delete turnstileContainer.dataset.token;
+      if (activeWidgetId && turnstile?.reset) turnstile.reset(activeWidgetId);
+      else turnstile?.reset?.();
+    };
+
+    if (turnstileContainer) {
+      const renderWhenReady = () => {
+        if (!turnstileContainer.isConnected) return;
+        const api = (window as Window & { turnstile?: TurnstileApi }).turnstile;
+        if (!api) {
+          apiWaitTimer = window.setTimeout(renderWhenReady, 150);
+          return;
+        }
+        if (turnstileContainer.dataset.rendered === 'true') return;
+        turnstileContainer.dataset.rendered = 'true';
+        try {
+          activeWidgetId = api.render(turnstileContainer, {
+            sitekey: turnstileContainer.dataset.sitekey,
+            action: 'contact',
+            'response-field': true,
+            'response-field-name': 'cf-turnstile-response',
+            callback: (token: string) => {
+              /* Capture the token on the container so the submit handler
+                 can always read it, regardless of whether Turnstile also
+                 injected its own hidden input into the form. */
+              turnstileContainer.dataset.token = token;
+              if (tokenError) tokenError.hidden = true;
+            },
+            'expired-callback': () => {
+              delete turnstileContainer.dataset.token;
+              if (tokenError) {
+                tokenError.textContent = 'The check expired. Complete it again before sending.';
+                tokenError.hidden = false;
+              }
+            },
+            'error-callback': () => {
+              delete turnstileContainer.dataset.token;
+              if (tokenError) {
+                tokenError.textContent = 'The security check could not be loaded.';
+                tokenError.hidden = false;
+              }
+            },
+          });
+        } catch {
+          if (tokenError) {
+            tokenError.textContent = 'The security check could not be loaded.';
+            tokenError.hidden = false;
+          }
+        }
+      };
+      renderWhenReady();
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearErrors();
+      result.hidden = true;
+      if (!form.reportValidity()) return;
+
+      const values = new FormData(form);
+      /* Prefer the token captured in the Turnstile callback — reliable even
+         when the widget's own hidden input lives outside this form's tree
+         (which happens if Turnstile re-parents the challenge iframe). */
+      const token = String(turnstileContainer?.dataset.token ?? values.get('cf-turnstile-response') ?? '');
+      if (!token) {
+        if (tokenError) {
+          tokenError.textContent = 'Complete the security check before sending.';
+          tokenError.hidden = false;
+        }
+        say('Complete the security check before sending.', 'error');
+        return;
+      }
+
+      submit.disabled = true;
+      submit.setAttribute('aria-busy', 'true');
+      submitLabel.textContent = 'Sending…';
+
+      try {
+        const response = await fetch('/api/leads', {
+          method: 'POST',
+          headers: { accept: 'application/json', 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: values.get('name'),
+            email: values.get('email'),
+            phone: values.get('phone'),
+            message: values.get('message'),
+            turnstileToken: token,
+            consent: values.get('consent') === 'on',
+          }),
+        });
+        const data = await response.json().catch(() => ({})) as {
+          ok?: boolean;
+          error?: string;
+          errors?: Record<string, string>;
+          resetTurnstile?: boolean;
+          message?: string;
+        };
+
+        if (data.resetTurnstile) resetTurnstile();
+        if (!response.ok || !data.ok) {
+          if (data.errors) showErrors(data.errors);
+          say(data.error ?? 'We could not send your message right now. Try again later.', 'error');
+          return;
+        }
+
+        form.reset();
+        resetTurnstile();
+        say(data.message ?? 'Message sent. Thank you for getting in touch.', 'success');
+      } catch {
+        resetTurnstile();
+        say('We could not confirm that your message was sent. If it is urgent, contact us by phone or email.', 'error');
+      } finally {
+        submit.disabled = false;
+        submit.removeAttribute('aria-busy');
+        submitLabel.textContent = originalLabel;
+      }
+    });
+
+    form.addEventListener('input', (event) => {
+      const control = event.target as HTMLElement;
+      const errorId = control.getAttribute('aria-describedby');
+      if (!errorId) return;
+      for (const id of errorId.split(/\s+/)) {
+        const node = document.getElementById(id);
+        if (node?.matches('[data-error-for]')) {
+          node.hidden = true;
+          node.textContent = '';
+          control.removeAttribute('aria-invalid');
+        }
+      }
+    });
+  }
+
+  document.addEventListener('astro:page-load', setupContactForm);
+  document.addEventListener('astro:before-swap', () => {
+    if (apiWaitTimer !== undefined) window.clearTimeout(apiWaitTimer);
+    const api = (window as Window & { turnstile?: TurnstileApi }).turnstile;
+    if (activeWidgetId) api?.remove?.(activeWidgetId);
+    activeWidgetId = undefined;
+  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupContactForm, { once: true });
+  } else {
+    setupContactForm();
+  }
+</script>
+
+<style>
+  .form {
+    display: grid;
+    gap: var(--space-m);
+  }
+
+  .form__grid {
+    display: grid;
+    gap: var(--space-m);
+  }
+
+  @media (min-width: 34rem) {
+    .form__grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .field--full {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .field {
+    display: grid;
+    gap: var(--space-3xs);
+  }
+
+  .field label {
+    font-size: var(--step--1);
+    font-weight: var(--weight-semibold);
+  }
+
+  .field input:not([type='checkbox']),
+  .field textarea {
+    inline-size: 100%;
+    min-block-size: 2.75rem;
+    padding: 0.65em 0.9em;
+    color: var(--text);
+    background: var(--surface);
+    border: 1.5px solid var(--border-strong);
+    border-radius: var(--radius-s);
+  }
+
+  .field textarea {
+    min-block-size: 8rem;
+    resize: vertical;
+  }
+
+  .field input:not([type='checkbox']):hover,
+  .field textarea:hover {
+    border-color: var(--text-muted);
+  }
+
+  .field input:not([type='checkbox']):focus-visible,
+  .field textarea:focus-visible,
+  .field input[type='checkbox']:focus-visible {
+    outline: none;
+    border-color: var(--focus);
+    box-shadow: var(--ring);
+  }
+
+  .field [aria-invalid='true'] {
+    border-color: var(--danger);
+    background: var(--danger-bg);
+  }
+
+  .field__error {
+    color: var(--danger);
+    font-size: var(--step--1);
+  }
+
+  .field__error[hidden],
+  .form__result[hidden] {
+    display: none;
+  }
+
+  .field__checkbox {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    gap: var(--space-2xs);
+  }
+
+  .field__checkbox input {
+    inline-size: 1.2em;
+    block-size: 1.2em;
+    margin-block-start: 0.15em;
+    accent-color: var(--focus);
+  }
+
+  .field__note,
+  .form__required {
+    color: var(--text-muted);
+    font-size: var(--step--1);
+  }
+
+  .form__challenge {
+    display: grid;
+    gap: var(--space-2xs);
+  }
+
+  .form__warning {
+    color: var(--danger);
+    font-size: var(--step--1);
+  }
+
+  .form__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-s) var(--space-m);
+  }
+
+  .form__submit:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+  }
+
+  .form__submit[aria-busy='true'] {
+    cursor: wait;
+  }
+
+  .form__result {
+    padding: var(--space-m) var(--space-l);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    font-size: var(--step--1);
+  }
+
+  .form__result[data-tone='success'] {
+    text-align: center;
+    padding: var(--space-xl) var(--space-l);
+    border-color: var(--accent-500);
+    background: var(--surface);
+  }
+
+  .form__result-icon {
+    display: none;
+  }
+
+  [data-tone='success'] .form__result-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 3.5rem;
+    block-size: 3.5rem;
+    margin: 0 auto var(--space-m);
+    border-radius: 50%;
+    background: var(--accent-500);
+    color: var(--surface);
+    font-size: var(--step-3);
+    font-weight: var(--weight-bold);
+  }
+
+  .form__result-title {
+    font-size: var(--step-1);
+    font-weight: var(--weight-bold);
+    margin-block-end: var(--space-2xs);
+  }
+
+  .form__result-body {
+    color: var(--text-muted);
+  }
+
+  .form__result-reset {
+    margin-block-start: var(--space-m);
+  }
+
+  .form__result[data-tone='error'] {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: var(--danger-bg);
+  }
+
+  .form__result[data-tone='error'] .form__result-icon,
+  .form__result[data-tone='error'] .form__result-title {
+    display: none;
+  }
+</style>
