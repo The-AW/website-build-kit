@@ -40,7 +40,7 @@ export const contactRuntime = (manifest) => CONTACT_RUNTIME_CHOICES.includes(man
 export const D1_LEADS_ROUTE = "export const prerender = false;\nexport { POST } from '../../lib/lead-route';";
 
 /**
- * Whether the lead API may accept submissions in this environment (d1_leads only).
+ * Whether the lead API may accept submissions in this environment (d1_leads and private_crm).
  *
  * Staging is on so the form can be exercised. Production stays closed until
  * `forms.productionEnabled` is true AND `forms.productionAcceptance` records the staging round
@@ -49,7 +49,7 @@ export const D1_LEADS_ROUTE = "export const prerender = false;\nexport { POST } 
  * is a safe state to ship; a form that looks live and cannot submit is not.
  */
 export function leadsEnabledFor(manifest, environment) {
-  if (manifest?.forms?.choice !== 'd1_leads') return false;
+  if (!CONTACT_RUNTIME_CHOICES.includes(manifest?.forms?.choice)) return false;
   if (environment === 'staging') return true;
   return manifest?.forms?.productionEnabled === true;
 }
@@ -61,10 +61,10 @@ function acceptanceErrors(manifest) {
     return ['forms.productionEnabled is true but forms.productionAcceptance is missing; record the staging acceptance that justifies it.'];
   }
   if (acceptance.stagingSubmissionVerified !== true) {
-    errors.push('forms.productionAcceptance.stagingSubmissionVerified must be true: submit the staging form and confirm the row arrived in D1.');
+    errors.push('forms.productionAcceptance.stagingSubmissionVerified must be true: submit the staging form and confirm the lead arrived (the D1 row, or the CRM record for private_crm).');
   }
   if (acceptance.testRecordDeleted !== true) {
-    errors.push('forms.productionAcceptance.testRecordDeleted must be true: delete the synthetic row after verifying it.');
+    errors.push('forms.productionAcceptance.testRecordDeleted must be true: delete the synthetic record after verifying it.');
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(acceptance.acceptedOn ?? '')) {
     errors.push('forms.productionAcceptance.acceptedOn must be the ISO date (YYYY-MM-DD) of that acceptance.');
@@ -238,6 +238,15 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
     if (!adapterPath || !existsSync(adapterPath)) add('forms.choice is private_crm but forms.crmAdapter does not point to the site-specific existing CRM adapter.');
     else if (/NOT_IMPLEMENTED|IMPLEMENT_EXISTING_PRIVATE_CRM/i.test(readFileSync(adapterPath, 'utf8'))) {
       add(`CRM adapter ${crmAdapter} is still the unimplemented template stub.`);
+    }
+    if (manifest?.forms?.productionEnabled !== undefined && typeof manifest.forms.productionEnabled !== 'boolean') {
+      add('forms.productionEnabled must be a boolean.');
+    }
+    if (environment === 'production' && manifest?.forms?.productionEnabled === true) {
+      for (const error of acceptanceErrors(manifest)) add(error);
+    }
+    if (environment === 'production' && manifest?.forms?.productionEnabled !== true) {
+      add('forms.productionEnabled must be true to build a production lead-capture form; set it only after staging submission is verified and the test record deleted.');
     }
   }
 
@@ -414,6 +423,10 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
       config.d1_databases = [{ binding: 'LEADS_DB', database_name: leadsDb.name, database_id: leadsDb.id, migrations_dir: '../migrations' }];
     }
     config.ratelimits = [{ name: 'LEADS_RATE_LIMITER', namespace_id: manifest.forms.rateLimiterNamespaceIds[environment], simple: { limit: 10, period: 60 } }];
+  }
+  if (manifest.forms.choice === 'private_crm') {
+    // The Worker reads this to keep a production form closed until forms.productionEnabled is accepted.
+    config.vars = { LEADS_ENABLED: leadsEnabledFor(manifest, environment) ? 'true' : 'false' };
   }
   // Relative to the generated file in .aw/.
   if (legacy) config.main = `../${legacyWorkerEntry(cwd)}`;
