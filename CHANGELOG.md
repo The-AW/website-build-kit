@@ -20,6 +20,11 @@ untouched):
 * Tests: `test:form` now covers the whole handler (every refusal stores nothing); `test:leads` adds config
   validation and the real migration against SQLite; `test:leads-worker` builds the template with the choice on
   and runs the Worker. `test:gates` gained check-env and reader refusals.
+* Found by the new Windows run, and latent for `private_crm`: `build:staging` with any contact runtime died on
+  Windows in the Cloudflare adapter ("The URL must be of scheme file"), because `astro.config.mjs` passed
+  an absolute `D:\...` path as `configPath` and the adapter parses it as `new URL(path, root)`, where `D:`
+  is a scheme. POSIX paths survive by accident. It is now passed relative to the config, forward slashes.
+  Every contact-runtime build had only ever run on Linux and macOS; CI never built one.
 * Rate limiting is the Workers rate-limiting binding, as shipped on the migration this came from, not a
   Durable Object. There is no retention job and no email/Slack delivery; the docs say so.
 

@@ -72,7 +72,7 @@ before(async () => {
   writeFileSync(MANIFEST, `${JSON.stringify(fixtureManifest, null, 2)}\n`);
   mkdirSync(API_DIR, { recursive: true });
   writeFileSync(ROUTE, `${D1_LEADS_ROUTE}\n`);
-  const run = spawnSync(process.execPath, [at('scripts/build.mjs'), 'staging'], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, CI: 'true' } });
+  const run = spawnSync(process.execPath, [at('scripts/build.mjs'), 'staging'], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, CI: 'true', NODE_TEST_CONTEXT: undefined } }); // not inside this runner, or build.mjs's own `node --test` steps are skipped as "recursive"
   built = { code: run.status, out: `${run.stdout}${run.stderr}` };
   if (run.status !== 0) return;
   config = JSON.parse(readFileSync(at('dist/server/wrangler.json'), 'utf8'));
