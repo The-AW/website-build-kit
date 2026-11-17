@@ -125,6 +125,13 @@ does ship is the skeleton of the parts that take longest to get right:
 - **Media pipeline** — `npm run media`: `sharp` → responsive AVIF and WebP, dimensions manifest
   so nothing shifts, favicons rendered from the vector, JPEG social twins only for images used
   as `og:image`. AVIF is 26% smaller at better quality, measured rather than asserted
+- **Migrated-media tools** (opt-in, `media.legacyUploads: true`) — a WordPress migration's used
+  uploads, staged by hard link and converted to one WebP each at ~2× their measured width, every
+  reference rewritten with a build that fails on a missing file, old URLs 301'd in one hop by a
+  Worker whose unknown paths are still a real 404. One migration took 2.9 GB to 99 MB
+  (`build.md` §5b: `npm run legacy:stage`, `npm run legacy:widths`, `npm run legacy:webp`,
+  `npm run legacy:link`, `npm run legacy:rewrite`, `npm run check:file-count`,
+  `npm run check:legacy-media`, `npm run test:legacy-media`)
 - **Design tokens** — colour, fluid type scale, spacing, radii, tinted shadows, motion; plus
   a semantic layer so `.on-dark` inverts a whole section by redefining six variables. The
   brand ramp is a grey placeholder behind an `--unset` marker; you decide it
