@@ -15,7 +15,7 @@ of them — clean build, clean types, clean deploy, wrong result.
 
 Building or rebuilding a marketing site for a business: landing pages, local services,
 multi-location, professional services, product/SaaS marketing, corporate, editorial or
-portfolio. Page shape for each in `references/archetypes.md`.
+portfolio, and affiliate product roundups. Page shape for each in `references/archetypes.md`.
 
 **Not** for e-commerce storefronts or application work with authentication and per-user state.
 For a client who has a store, build the marketing surface and leave checkout where it is —

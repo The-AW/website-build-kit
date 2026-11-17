@@ -38,10 +38,24 @@ jobs:
       # here rather than trusting a local install.
       - run: npm ci
 
+      # ⚠ A SITE THAT KEEPS ITS MEDIA OUTSIDE GIT CANNOT PASS THIS JOB, AND A JOB NOBODY CAN MAKE GREEN GETS IGNORED.
+      # With `media.legacyUploads` the originals live on a machine, not in the repository, so the migrated-media
+      # steps (stage, WebP, rewrite, file count) fail on every push for a reason that has nothing to do with the
+      # commit. This step says whether the originals are here; if they are not it leaves a notice and sets
+      # AW_ALLOW_MISSING_MEDIA below, and the build SKIPS those steps. Everything else still runs: types, copy, alt,
+      # sitemap, the Worker config. The skipped build is marked undeployable (`npm run deploy:*` refuses it) and a
+      # production build ignores the switch and fails.
+      - name: Is the media available here?
+        id: media
+        run: node scripts/media-available.mjs
+
       # The kit's promise: green from a clean checkout, with no content, no
       # images and no secrets. CI=true so Astro reports as a CI environment.
       - name: Build (staging)
-        run: CI=true npm run build:staging
+        env:
+          CI: true
+          AW_ALLOW_MISSING_MEDIA: ${{ steps.media.outputs.skip-media }}
+        run: npm run build:staging
 
       - name: Types
         run: PUBLIC_SITE_ENV=staging npm run check

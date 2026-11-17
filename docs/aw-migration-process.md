@@ -59,6 +59,8 @@ Production build/deploy refuses example or staging hosts, reused Worker names, a
 
 Minimal launch blockers are: the production build targets the production host and Worker; every inventoried source URL resolves or has a reviewed redirect/disposition; production robots/sitemap/canonicals and a real 404 are correct; staging stays noindex; acceptance and rollback records exist; and the old WordPress origin remains recoverable. If `forms.choice` is `none`, forms, CRM and optional analytics are not blockers. After-launch polish is tracked separately and must not be confused with a release blocker.
 
+The default cutover is a Worker **route** over the existing proxied record, so DNS does not change and rollback is deleting the route: [production-cutover.md](production-cutover.md) has the order of operations, the prestate readback, the five-minute smoke test and the rollback steps. `npm run verify` also fails when `http://` on the production host does not 301 to `https://`, which a Worker route does not do by itself. Before cutover, **inventory every other domain that points at the old server** and decide its 301 (production-cutover.md §8, with the edge-redirect SOP in The-AW/seo-sops). Affiliate sites also run `npm run lcp` and `npm run check:money` on deployed staging (production-cutover.md §6).
+
 Before cutover, preserve a rollback snapshot and the WordPress origin. Do not retire Cloudways until a backup is verified and shared-server dependencies are checked; other sites may share that server. Keep the WordPress application/server until production smoke checks pass.
 
 ## 4. Cloudflare auth and asset-upload fallback
@@ -70,5 +72,7 @@ If Wrangler's bulk asset transfer fails with `fetch failed` before activation, f
 This flow is evidenced by Mae Experiente production: the injected BYOK token passed `wrangler whoami`, Wrangler's standard bulk transfer failed before activation, and the official API path completed version/deployment/domain readback. The one-off Mae helper was pinned to its PR and first-deploy-only; do not reuse it unchanged. See the [final cutover task aTJVRFYyXThd6nA8LNJLdL](https://manus.im/app/task/aTJVRFYyXThd6nA8LNJLdL) and [merged Mae PR #12](https://github.com/The-AW/mae-experiente/pull/12). That cutover had one release candidate and one live writer; unrelated sites stayed isolated. Parallel work is safe only for independent tasks supplied with the complete site, repository, domain, target-ID and decision context; review the final meaningful diff, not repeated approval rounds.
 
 ## 5. After launch
+
+CI on a site whose media is kept outside Git: `node scripts/media-available.mjs` in the gates workflow, and `AW_ALLOW_MISSING_MEDIA=1` on a staging build skips the migrated-media steps with a notice and marks the build undeployable (`npm run test:media-skip`).
 
 Check representative routes and media, production canonicals/indexability, production sitemap and robots, unknown-path 404 status, redirects and any enabled CRM path. Record results in the site repository. Keep after-launch copy, design and non-blocking integration polish separate from the minimum launch gate.

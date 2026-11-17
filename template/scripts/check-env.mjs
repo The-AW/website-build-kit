@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { contactRuntime, readMigrationManifest, validateMigrationManifest } from './lib/aw-migration.mjs';
+import { contactRuntime, expectedRoute, readMigrationManifest, validateMigrationManifest } from './lib/aw-migration.mjs';
 
 const env = process.env.PUBLIC_SITE_ENV;
 const reset = '\x1b[0m';
@@ -38,7 +38,7 @@ const routes = config.routes ?? [];
 if (config.name !== target.worker) {
   fail(`${configPath} names Worker ${JSON.stringify(config.name)}, but ${env} requires ${target.worker}.`);
 }
-if (routes.length !== 1 || routes[0]?.pattern !== target.hostname || routes[0]?.custom_domain !== true) {
+if (routes.length !== 1 || JSON.stringify(routes[0]) !== JSON.stringify(expectedRoute(target))) {
   fail(`${configPath} does not target only the manifest's ${env} hostname ${target.hostname}.`);
 }
 if (config.workers_dev !== false) {

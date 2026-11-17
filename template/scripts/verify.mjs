@@ -32,6 +32,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { discoverRoutes } from './lib/routes.mjs';
 import { PRESERVED, preservedFromRecon } from './lib/preserved.mjs';
 import { readInventory } from './lib/inventory.mjs';
+import { checkHttpRedirect, httpProbeUrl } from './lib/http-redirect.mjs';
 
 const RESET = '[0m';
 const RED = '[31m';
@@ -118,6 +119,20 @@ if (env === 'staging') {
     analyticsRefs ? `found ${analyticsRefs} reference(s) — staging must emit no tag at all` : '');
 } else {
   notes.push(`analytics references on production: ${analyticsRefs} (0 is valid — IDs may be unset)`);
+}
+
+/* ── http:// must 301 to https:// on the production host ───────────────────
+ * Production only: a staging host is behind its own rules. `VERIFY_HTTP_PROBE` points the probe at another
+ * URL (the test fixture is plain http), which also switches the check on for a non-https origin. */
+if (env === 'production') {
+  const probe = process.env.VERIFY_HTTP_PROBE || httpProbeUrl(origin);
+  if (probe) {
+    section('http → https');
+    const redirect = await checkHttpRedirect(probe);
+    record('http:// 301s to the same URL on https://', redirect.ok, redirect.detail);
+  } else {
+    notes.push('http → https was not checked: the origin given is not https. Run verify against the https production host.');
+  }
 }
 
 const robotsRes = await req('/robots.txt');
