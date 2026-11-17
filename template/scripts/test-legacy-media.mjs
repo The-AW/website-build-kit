@@ -114,7 +114,8 @@ before(async () => {
   put('public/_headers', '/wp-content/uploads/*\n  Cache-Control: public, max-age=31536000, immutable\n');
 });
 
-after(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
+// Best effort: on Windows a just-stopped workerd can hold the directory for a moment.
+after(() => { try { if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 }); } catch { /* a temp directory is not an assertion */ } });
 
 const chromeAvailable = (() => {
   try {
@@ -326,7 +327,14 @@ test('Worker: old URLs are one 301 to a file that serves; an unknown URL is a re
   const server = spawn(process.execPath, [wrangler, 'dev', '--config', '.aw/wrangler-staging.jsonc', '--local', '--port', String(port), '--ip', '127.0.0.1'], {
     cwd: dir, stdio: 'ignore', env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: '1' },
   });
-  t.after(() => server.kill());
+  // wrangler spawns workerd as a child; on Windows killing the parent leaves it running, so take the tree.
+  t.after(() => new Promise((resolve) => {
+    if (server.exitCode !== null) return resolve();
+    server.once('exit', resolve);
+    if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(server.pid), '/T', '/F']);
+    else server.kill();
+    setTimeout(resolve, 5000);
+  }));
   let up = false;
   for (let i = 0; i < 90 && !up; i += 1) {
     try { up = (await fetch(`${base}/`)).ok; } catch { await new Promise((r) => setTimeout(r, 1000)); }
