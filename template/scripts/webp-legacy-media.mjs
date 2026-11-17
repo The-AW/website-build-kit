@@ -138,7 +138,7 @@ await Promise.all(Array.from({ length: 4 }, lane));
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
     if (e.isDirectory()) sweep(p);
-    else if (!keep.has(`/${p.slice(LEGACY_DEPLOY.length + 1)}`)) rmSync(p);
+    else if (!keep.has(`/${p.slice(LEGACY_DEPLOY.length + 1).replace(/\\/g, '/')}`)) rmSync(p); // URL paths, not Windows ones
   }
 })(join(LEGACY_DEPLOY, UPLOADS));
 

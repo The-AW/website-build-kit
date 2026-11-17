@@ -35,8 +35,9 @@ if (!existsSync(assetsDir)) {
   process.exit(1);
 }
 const originals = join(LEGACY_ORIGINALS, UPLOADS);
+const originalsLabel = `${LEGACY_ORIGINALS}/${UPLOADS}`; // forward slashes in messages on every platform
 if (!existsSync(originals)) {
-  console.error(`✗ legacy-media-stage: ${originals} is missing.\n  Put the downloaded originals there (path = the old URL path); they stay out of Git.`);
+  console.error(`✗ legacy-media-stage: ${originalsLabel} is missing.\n  Put the downloaded originals there (path = the old URL path); they stay out of Git.`);
   process.exit(1);
 }
 await guardDisk(assetsDir, 'legacy-media-stage');
@@ -61,7 +62,7 @@ const hashes = new Map();
 const inventory = manifest?.inventories?.media;
 if (typeof inventory === 'string' && existsSync(inventory)) {
   const [head, ...rows] = readFileSync(inventory, 'utf8').split(/\r?\n/).filter(Boolean);
-  const cols = head.replace(/^﻿/, '').split(',').map((c) => c.replace(/^"|"$/g, '').trim().toLowerCase());
+  const cols = head.replace(/^\uFEFF/, '').split(',').map((c) => c.replace(/^"|"$/g, '').trim().toLowerCase());
   const at = { url: cols.indexOf('source_url'), sha: cols.indexOf('sha256') };
   if (at.url >= 0 && at.sha >= 0) {
     for (const row of rows) {
@@ -118,7 +119,8 @@ let swept = 0;
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
     if (e.isDirectory()) sweep(p);
-    else if (!used.has(`/${p.slice(LEGACY_STAGE.length + 1)}`)) { rmSync(p); swept += 1; }
+    // Windows paths use backslashes; the used set is URL paths.
+    else if (!used.has(`/${p.slice(LEGACY_STAGE.length + 1).replace(/\\/g, '/')}`)) { rmSync(p); swept += 1; }
   }
 })(join(LEGACY_STAGE, UPLOADS));
 
@@ -126,7 +128,7 @@ mkdirSync(dirname(USED_LIST), { recursive: true });
 writeFileSync(USED_LIST, `${JSON.stringify({ paths: [...used].sort(), missing, references: referenced.size })}\n`);
 
 const problems = [
-  ...missing.map((p) => `${p}: referenced by a page, no such original in ${originals}`),
+  ...missing.map((p) => `${p}: referenced by a page, no such original in ${originalsLabel}`),
   ...corrupt.map((p) => `${p}: bytes differ from the sha256 in ${inventory}`),
 ];
 console.log(`${problems.length ? '✗' : '✓'} legacy-media-stage: ${referenced.size} referenced upload paths → ${used.size} original files used (${linked} hard-linked${copied ? `, ${copied} COPIED` : ''}, ${swept} stale removed); ${missing.length} missing, ${corrupt.length} altered`);

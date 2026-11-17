@@ -78,7 +78,7 @@ if (existsSync(STATE)) {
   for (const p of st.done) donePages.add(p);
   console.log(`resuming: ${donePages.size}/${crawl.length} pages already measured`);
 }
-const launch = () => puppeteer.launch({ headless: true, protocolTimeout: 120000 });
+const launch = () => puppeteer.launch({ headless: true, protocolTimeout: 120000, args: ['--no-sandbox'] });
 let browser = await launch();
 const save = () => writeFileSync(STATE, JSON.stringify({ widths, done: [...donePages] }));
 
