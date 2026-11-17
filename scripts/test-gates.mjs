@@ -2148,6 +2148,26 @@ for (const [label, faults, wanted] of [
   }
 }
 
+/* ⚠ http → https on the production host. The check is on for a non-https fixture only through
+   VERIFY_HTTP_PROBE, which points it at the fixture's /__http-probe/ path (it plays `http://host/`). */
+function httpGate(label, { faults = '', expect, contains }) {
+  let fixture;
+  try { fixture = startFixture(faults); } catch (err) { results.push({ gate: currentGate, label, ok: false, detail: String(err.message) }); return; }
+  try {
+    gate(label, {
+      script: 'verify.mjs',
+      files: VERIFY_FILES,
+      args: [fixture.origin],
+      env: { VERIFY_HTTP_PROBE: `${fixture.origin}/__http-probe/?aw-https-probe=1` },
+      expect,
+      then: (_dir, out) => (contains && !plain(out).includes(contains) ? `did not print ${JSON.stringify(contains)}` : null),
+    });
+  } finally { fixture.child.kill('SIGKILL'); }
+}
+httpGate('http:// that 301s to the same URL on https passes', { expect: 0, contains: '✓ http:// 301s to the same URL on https://' });
+httpGate('http:// served as a page — must refuse', { faults: 'no-https-redirect', expect: 1, contains: 'served over plain http instead of redirecting' });
+httpGate('http:// 301 that drops the query string — must refuse', { faults: 'http-redirect-drops-query', expect: 1, contains: 'query string was not preserved' });
+
 /* Both reachable without a server at all. */
 gate('no origin argument is a usage error', {
   script: 'verify.mjs',
@@ -4555,6 +4575,171 @@ gate('a status that is not a plain word never reaches the query', {
   files: { 'aw-migration.json': awManifest({ forms: d1Forms() }) },
   expect: 1,
   contains: '--status must be lowercase letters and underscores',
+});
+
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Cutover option A — `attach: "route"`: a zone route over the existing proxied record
+ * ──────────────────────────────────────────────────────────────────────── */
+
+const routeManifest = (attach = 'route', zoneId = TEST_ZONE_ID) => awManifest({
+  targets: {
+    repositoryUrl: 'https://github.com/The-AW/mae-sample-migration',
+    cloudflare: {
+      staging: { accountId: TEST_ACCOUNT_ID, zoneId: TEST_ZONE_ID },
+      production: { accountId: TEST_ACCOUNT_ID, zoneId, attach },
+    },
+    workers: { staging: 'client-staging', production: 'client-production' },
+  },
+});
+const routeConfig = (route) => JSON.stringify({ ...JSON.parse(awConfig('production')), routes: [route] });
+
+describe('check-env, attach route');
+
+gate('production attached by a zone route passes', {
+  script: 'check-env.mjs',
+  files: { 'aw-migration.json': routeManifest(), '.aw/wrangler-production.jsonc': routeConfig({ pattern: 'client.co.uk/*', zone_id: TEST_ZONE_ID }) },
+  env: { PUBLIC_SITE_ENV: 'production' },
+  expect: 0,
+});
+
+gate('attach route but the config still says custom domain — must refuse', {
+  script: 'check-env.mjs',
+  files: { 'aw-migration.json': routeManifest(), '.aw/wrangler-production.jsonc': routeConfig({ pattern: 'client.co.uk', custom_domain: true }) },
+  env: { PUBLIC_SITE_ENV: 'production' },
+  expect: 1,
+  contains: "does not target only the manifest's",
+});
+
+gate('a route on another zone — must refuse', {
+  script: 'check-env.mjs',
+  files: { 'aw-migration.json': routeManifest(), '.aw/wrangler-production.jsonc': routeConfig({ pattern: 'client.co.uk/*', zone_id: '0123456789abcdef0123456789abcdef' }) },
+  env: { PUBLIC_SITE_ENV: 'production' },
+  expect: 1,
+  contains: "does not target only the manifest's",
+});
+
+gate('an unknown attach mode — must refuse', {
+  script: 'check-env.mjs',
+  files: { 'aw-migration.json': routeManifest('dns'), '.aw/wrangler-production.jsonc': routeConfig({ pattern: 'client.co.uk', custom_domain: true }) },
+  env: { PUBLIC_SITE_ENV: 'production' },
+  expect: 1,
+  contains: 'attach must be "custom_domain" or "route"',
+});
+
+gate('attach route with no zone id — must refuse', {
+  script: 'check-env.mjs',
+  files: { 'aw-migration.json': routeManifest('route', ''), '.aw/wrangler-production.jsonc': routeConfig({ pattern: 'client.co.uk/*', zone_id: '' }) },
+  env: { PUBLIC_SITE_ENV: 'production' },
+  expect: 1,
+  contains: 'zoneId must be the 32-character zone ID',
+});
+
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Money pages (the affiliate archetype's launch gate): conversion parity and observed LCP
+ *
+ * Both drive real Chrome against the fixture's /money/ page. The default page passes; each fault changes only
+ * the deployed copy, never `/__source/money/`, which plays the old site. A check that cannot tell an affiliate
+ * href that changed from one that did not is the failure this exists to prevent.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+describe('check-money-pages');
+
+function moneyGate(label, { faults = '', expect, contains, script = 'check-money-pages.mjs', extra = [] }) {
+  let fixture;
+  try { fixture = startFixture(faults); } catch (err) { results.push({ gate: currentGate, label, ok: false, detail: String(err.message) }); return; }
+  try {
+    gate(label, {
+      script,
+      files: { 'README.md': 'x' },
+      args: script === 'check-money-pages.mjs'
+        ? [fixture.origin, '/money/', '--source', `${fixture.origin}/__source`, ...extra]
+        : [fixture.origin, '/money/', '--runs', '1', ...extra],
+      expect,
+      then: (_dir, out) => (contains && !plain(out).includes(contains) ? `did not print ${JSON.stringify(contains)}` : null),
+    });
+  } finally { fixture.child.kill('SIGKILL'); }
+}
+
+moneyGate('an identical page passes: links, table, text, clickable, images loaded', { expect: 0, contains: '✓ no conversion difference' });
+moneyGate('an affiliate href that changed — must refuse', { faults: 'money-href', expect: 1, contains: 'href: "https://shop.example.invalid/c?tag=other" ≠ source' });
+moneyGate('an affiliate link that is gone — must refuse', { faults: 'money-link-missing', expect: 1, contains: '2 outbound links, source has 3' });
+moneyGate('a price that changed — must refuse', { faults: 'money-table', expect: 1, contains: 'tables differ' });
+moneyGate('a link present in the HTML but display:none — must refuse', { faults: 'money-hidden', expect: 1, contains: 'not rendered or not clickable' });
+moneyGate('a link covered by an overlay (not clickable) — must refuse', { faults: 'money-covered', expect: 1, contains: 'not rendered or not clickable' });
+moneyGate('a page with no content area is a refusal, not a pass', { expect: 1, contains: 'not found', extra: ['--content', '.nope'] });
+
+gate('no source to compare with is a usage error', {
+  script: 'check-money-pages.mjs',
+  files: { 'README.md': 'x' },
+  args: ['https://staging.example.org', '/money/'],
+  expect: 1,
+  contains: 'usage:',
+});
+
+describe('measure-lcp');
+
+/* The control and the fault use a 1000 ms bar, not the real 500: a timing assertion on a loaded CI runner must not flake,
+   and the fault (a hero held back 1.5 s) is far past either. The 500 ms default is a constant in the script. */
+moneyGate('a fast page is at or under the bar at both viewports', { script: 'measure-lcp.mjs', extra: ['--bar', '1000'], expect: 0, contains: '✓ every gated page is at or under 1000 ms' });
+moneyGate('a page whose hero arrives 1.5 s late — must refuse', { faults: 'lcp-slow', script: 'measure-lcp.mjs', extra: ['--bar', '1000'], expect: 1, contains: 'miss the bar' });
+
+gate('measure-lcp with no page to measure is a usage error', {
+  script: 'measure-lcp.mjs',
+  files: { 'README.md': 'x' },
+  args: ['https://staging.example.org'],
+  expect: 1,
+  contains: 'usage:',
+});
+
+
+/* ────────────────────────────────────────────────────────────────────────
+ * CI for a site whose media is kept outside Git — media-available, and deploy refusing a skipped build
+ * ──────────────────────────────────────────────────────────────────────── */
+
+describe('media-available');
+
+const legacyOn = JSON.stringify({ media: { legacyUploads: true } });
+gate('flag off: nothing depends on media kept outside Git', {
+  script: 'media-available.mjs',
+  files: { 'aw-migration.json': JSON.stringify({ media: { legacyUploads: false } }) },
+  expect: 0,
+  contains: 'media.legacyUploads is off',
+});
+gate('flag on, originals absent: exits 0 (a fact about the runner, not a failure) and says the steps will be skipped', {
+  script: 'media-available.mjs',
+  files: { 'aw-migration.json': legacyOn },
+  expect: 0,
+  contains: '::notice title=Media is not in this checkout',
+});
+gate('flag on, originals present: the steps will run, no notice', {
+  script: 'media-available.mjs',
+  files: { 'aw-migration.json': legacyOn, 'media/source/legacy/wp-content/uploads/2024/01/a.png': 'x' },
+  expect: 0,
+  contains: 'the migrated-media steps will run',
+  then: (_dir, out) => (out.includes('::notice') ? 'announced missing media although the originals are there' : null),
+});
+gate('writes available=false and skip-media=1 to GITHUB_OUTPUT when the media is missing', {
+  script: 'media-available.mjs',
+  files: { 'aw-migration.json': legacyOn, 'out.txt': '' },
+  setup: (dir) => { process.env.AW_TEST_OUT = join(dir, 'out.txt'); },
+  env: { get GITHUB_OUTPUT() { return process.env.AW_TEST_OUT; } },
+  expect: 0,
+  then: (dir) => {
+    const out = readFileSync(join(dir, 'out.txt'), 'utf8');
+    return /available=false/.test(out) && /skip-media=1/.test(out) ? null : `GITHUB_OUTPUT was ${JSON.stringify(out)}`;
+  },
+});
+
+describe('deploy-aw, skipped media');
+
+gate('a build that skipped the media is not deployable — must refuse before anything else', {
+  script: 'deploy-aw.mjs',
+  args: ['staging', '--dry-run'],
+  files: { 'aw-migration.json': awManifest(), '.aw/media-skipped.json': '{"reason":"originals missing"}' },
+  expect: 1,
+  contains: 'SKIPPED the migrated-media steps',
 });
 
 

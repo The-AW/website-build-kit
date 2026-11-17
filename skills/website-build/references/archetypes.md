@@ -18,6 +18,7 @@ as a win"* and the shape follows.
 | [Product / SaaS](#product--saas) | Signup or demo | Hero and pricing. Two paths, both open |
 | [Corporate](#corporate) | Depends on the audience | Per audience route, not on the homepage |
 | [Editorial / portfolio](#editorial--portfolio) | The work gets seen; an enquiry follows | Quiet, after the work |
+| [Affiliate roundups](#affiliate-roundups) | The visitor clicks through to a retailer | The buy button, inside each product block. Never behind a script |
 | [E-commerce](#e-commerce) | — | Not this kit. See below |
 
 ---
@@ -254,6 +255,50 @@ work index — a grid with real hierarchy, not a uniform wall
 
 **Failure mode:** the work compressed to mush by a pipeline nobody re-checked, and an infinite
 uniform grid with no way in.
+
+---
+
+## Affiliate roundups
+
+Product roundups and comparisons ("best X for Y") that earn when a visitor clicks a retailer link. The
+**money pages** are the roundups themselves; the home page, categories and author archives route to them. Shipped
+on a 615-post WordPress migration whose roundups carried 18-33 affiliate links each.
+
+```
+roundup — the verdict and a comparison table first, then one block per product
+  ↓  product block — image, the specific reason it is picked, price/spec row, the buy button
+  ↓  how it was chosen — criteria and method, once, low on the page
+  ↓  category / archive — routes to roundups, not a money page
+```
+
+- **Proof model:** the method, not testimonials. Say what was compared and how, per product, in the
+  product's own block. A table of specs and prices is the comparison; it must survive the migration cell for cell.
+- **Where conversion sits:** the buy button in every product block and the first link in the verdict. It is a
+  plain anchor in the server-rendered HTML with its `rel` (`sponsored`, `nofollow`) and `target`: **never injected
+  by a script, never behind a consent gate, never `display:none` at a breakpoint, never covered by a sticky bar**.
+  A button that is in the HTML and cannot be tapped converts as badly as one that is missing.
+- **Speed is part of the page.** A roundup is a landing page for search traffic, so the first image is the LCP image
+  and is never lazy (`build.md` §5b item 7). **The bar for money pages: observed LCP ≤ 500 ms (median of 3, real
+  Chrome, warm CDN, no throttling) at 1440 and 390 px, and CLS < 0.1.** Measured on the migration above: eight money
+  pages at 332-488 ms desktop and 332-408 ms mobile, CLS ≤ 0.011. Pages that are not money pages (home, archives)
+  are recorded, not gated.
+- **Migration:** every outbound affiliate link keeps its `href` (including the tracking tag), `rel`, `target`,
+  text and class, in order. Count them before and after.
+
+**The launch gate** is two commands against the **deployed** site, and a change that touches either is a stop:
+
+| Gate | Command | Fails when |
+|---|---|---|
+| Speed | `npm run lcp -- https://<staging> /roundup/ …` | median LCP > 500 ms or CLS ≥ 0.1 on any money page, at either width |
+| Conversion parity | `npm run check:money -- https://<staging> /roundup/ … --source https://<old-site>` | an outbound link's `href`/`rel`/`target`/text/class or order differs from the old site; a table cell or the text differs; a link is hidden, zero-size, covered or `pointer-events:none` at 390 or 1440 px; a content image did not load |
+
+`--ignore` names a block removed on purpose (a related-posts widget) and `--mask-dates` ignores a month and year
+written at request time; each use is named in the pull request, because it is the only thing allowed to differ.
+The cutover is [`production-cutover.md`](../../../docs/production-cutover.md) §6.
+
+**Failure mode:** a migration that is faster and quietly worse at converting: a tracking tag dropped from a
+query string, a `rel` rewritten by a plugin, a button that a new sticky element sits on top of, a price table
+rebuilt with one cell changed. Nothing errors, the pages look right, and the revenue falls by the next payout.
 
 ---
 

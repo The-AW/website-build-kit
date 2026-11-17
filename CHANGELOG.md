@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-11-17 — Launch checks learned on a WordPress migration (unreleased)
+
+* **`npm run verify` fails when `http://` on the production host does not 301 to `https://`**, with the path and
+  query preserved. The old WordPress origin did this, so nobody checked; a Worker route over the same proxied
+  hostname does not, and `http://host/<any path>` answered 200 on a live site while every https check was green.
+* **`docs/production-cutover.md`**: the cutover as a Worker route over the existing proxied record (`attach: "route"`,
+  now generated, validated by `check-env` and `deploy-aw`): DNS unchanged, rollback = delete the route. Prestate
+  readback, the five-minute smoke test, rollback steps, the one-rule http→https redirect, and the inventory of every
+  OTHER domain on the old server, with the edge-301 SOP in The-AW/seo-sops.
+* **Affiliate roundups archetype** with its launch gate: `npm run lcp` (observed median LCP ≤ 500 ms and CLS < 0.1,
+  real Chrome, warm CDN, 1440 and 390 px; Lighthouse's simulated 2.2-2.4 s was a model for pages that observed
+  0.33-0.49 s) and `npm run check:money` (every outbound affiliate link's `href`/`rel`/`target`/text/class, every
+  table cell and the text identical to the old site; every link rendered and clickable; images loaded). Both are
+  driven against a fixture with each fault in `test:gates`: an href that changed, a link gone, a price changed, a link
+  `display:none`, a link covered, a hero that arrives late.
+* **CI for media kept outside Git**: a gates job that builds a `media.legacyUploads` site on every push could never pass,
+  and a job nobody can make green is ignored. `scripts/media-available.mjs` says whether the originals are present; with
+  `AW_ALLOW_MISSING_MEDIA=1` a STAGING build skips the media steps with a notice, runs every other gate, and writes a
+  marker `deploy-aw` refuses. Production ignores the switch and fails. `npm run test:media-skip` runs the real build.
+
 ## 2026-11-17 — `forms.choice: "d1_leads"` (unreleased)
 
 The only contact path the kit shipped was `private_crm`, which needs a CRM, a shared ingestion secret and a

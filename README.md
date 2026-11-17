@@ -137,6 +137,13 @@ does ship is the skeleton of the parts that take longest to get right:
   consent, Turnstile Siteverify and one parameterised INSERT; production generated closed until a recorded
   acceptance; `npm run leads:staging` and `npm run leads:production` read rows with personal data masked
   (`npm run test:leads`, `npm run test:leads-worker`)
+- **Launch checks for a migration** — `npm run verify` fails when `http://` on the production host does not 301
+  to `https://` (a Worker route over a proxied record does not do it by itself); `docs/production-cutover.md` is
+  the route cutover (DNS unchanged, rollback = delete the route) with prestate readback, a five-minute smoke test
+  and the inventory of other domains on the old server; for affiliate sites `npm run lcp` (observed median LCP
+  ≤ 500 ms, real Chrome, 1440 and 390 px) and `npm run check:money` (affiliate links, prices and tables identical
+  to the old site, visible and clickable); the gates workflow skips media-dependent steps, with a notice, when the
+  media is kept outside Git (`npm run test:media-skip`, `npm run test:redirect`)
 - **Design tokens** — colour, fluid type scale, spacing, radii, tinted shadows, motion; plus
   a semantic layer so `.on-dark` inverts a whole section by redefining six variables. The
   brand ramp is a grey placeholder behind an `--unset` marker; you decide it

@@ -57,6 +57,9 @@ scripts/optimize-media.mjs     media/source → public/img as AVIF + WebP, plus 
 scripts/legacy-media-stage.mjs  media.legacyUploads: stage the uploads the built pages use (build.md §5b)
 scripts/webp-legacy-media.mjs  ...one WebP each, ~2x the measured width; rewrite-webp-refs.mjs fails on a missing file
 scripts/check-file-count.mjs   files in dist/ against the Workers static-assets cap, before the deploy
+scripts/measure-lcp.mjs        money pages: observed median LCP in real Chrome, 1440 and 390 px, bar 500 ms
+scripts/check-money-pages.mjs  money pages: affiliate links, tables, text identical to the old site, clickable
+scripts/media-available.mjs    CI: is the media (kept outside Git) here? skip the media steps with a notice if not
 scripts/tells.mjs              what is still undecided, and design.md §3 checked mechanically
 scripts/check-env.mjs          manifest host/Worker vs generated .aw/wrangler-<env>.jsonc
 scripts/check-sitemap.mjs      staging noindex plus production sitemap/robots/canonical host

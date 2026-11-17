@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { MEDIA_SKIPPED_MARKER } from './lib/legacy-media.mjs';
 import {
   contactRuntime,
   readMigrationManifest,
@@ -35,6 +36,11 @@ try {
   manifest = readMigrationManifest();
 } catch (error) {
   refuse(error.message);
+}
+if (existsSync(MEDIA_SKIPPED_MARKER)) {
+  refuse('the last build SKIPPED the migrated-media steps (the originals were not available), so it has no images and is not deployable.', [
+    `${MEDIA_SKIPPED_MARKER} is present. Build again on a machine that has the originals (npm run build:${env}); a normal build removes it.`,
+  ]);
 }
 const target = validateMigrationManifest(manifest, env, { phase: 'deploy' });
 if (!target.ok) refuse(`invalid ${env} target in aw-migration.json`, target.errors);

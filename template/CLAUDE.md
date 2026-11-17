@@ -121,6 +121,15 @@ of rows by email or Slack is a separate, later step, and there is **no retention
 retention period until one exists (`stacks.md` retention table). `npm run test:form`, `test:leads` and
 `test:leads-worker` prove it; the last builds the template with the choice on and runs the Worker.
 
+**Launch checks that exist because they failed silently.** `npm run verify` fails when `http://` on the production
+host does not 301 to `https://` (a Worker route does not redirect by itself). For a product-roundup / affiliate site:
+`npm run lcp` (observed median LCP ≤ 500 ms, CLS < 0.1, real Chrome, 1440 and 390 px) and `npm run check:money`
+(outbound affiliate links, tables and text identical to the old site; links visible and clickable) are the launch gate,
+on the DEPLOYED site. Cut over with a Worker route (`targets.cloudflare.production.attach: "route"`), not a custom domain:
+DNS unchanged, rollback = delete the route (`docs/production-cutover.md`). If the media is kept outside Git, CI sets
+`AW_ALLOW_MISSING_MEDIA=1` through `scripts/media-available.mjs`: the media steps are skipped with a notice and the
+build is marked undeployable; a production build ignores the switch.
+
 **The static default has no contact form runtime, KV archive or Turnstile requirement.** The
 retained `modules/contact/` code is an implementation draft that archives to KV; it is not AW's
 existing-private-CRM path and has not been proven end-to-end. Do not copy/enable it unchanged.

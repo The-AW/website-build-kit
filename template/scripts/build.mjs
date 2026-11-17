@@ -30,7 +30,8 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { MEDIA_SKIPPED_MARKER, legacyMediaPlan, legacyOriginalsPresent } from './lib/legacy-media.mjs';
 import {
   contactRuntime,
   formatTargetErrors,
@@ -44,6 +45,7 @@ import {
 const RESET = '\x1b[0m';
 const RED = '\x1b[31m';
 const DIM = '\x1b[2m';
+const YELLOW = '\x1b[33m';
 
 const env = process.argv[2];
 
@@ -175,11 +177,31 @@ step(process.execPath, ['scripts/check-cms.mjs']);
    the only person who finds out is the customer whose call went nowhere. */
 step(process.execPath, ['scripts/check-contact.mjs']);
 
+/* Decide about the migrated-media steps BEFORE spending a build: a missing download or a production build that
+   asked to skip them fails now, not after astro has run. */
+const mediaPlan = legacyMediaPlan({
+  enabled: usesLegacyUploads(manifest),
+  environment: env,
+  originalsPresent: legacyOriginalsPresent(),
+  allowMissing: process.env.AW_ALLOW_MISSING_MEDIA === '1',
+});
+if (mediaPlan.action === 'refuse-production' || mediaPlan.action === 'refuse') {
+  console.error(`\n${RED}✗ ${mediaPlan.reason}${RESET}\n`);
+  process.exit(1);
+}
+if (mediaPlan.action === 'skip') {
+  /* The marker is what stops this build being deployed: deploy-aw.mjs refuses while it exists. */
+  mkdirSync('.aw', { recursive: true });
+  writeFileSync(MEDIA_SKIPPED_MARKER, `${JSON.stringify({ at: new Date().toISOString(), reason: mediaPlan.reason })}\n`);
+  console.warn(`\n${YELLOW}! ${mediaPlan.reason}${RESET}\n`);
+} else {
+  rmSync(MEDIA_SKIPPED_MARKER, { force: true });
+}
 run(['build']);
 
 /* Migrated WordPress uploads (build.md §5b), behind `media.legacyUploads`. After the build, because the
    used set is read from the rendered pages; before every check below, so they read the final pages. */
-if (usesLegacyUploads(manifest)) {
+if (mediaPlan.action === 'run' && usesLegacyUploads(manifest)) {
   const strip = ['--experimental-strip-types'];
   step(process.execPath, [...strip, 'scripts/legacy-media-stage.mjs']);
   step(process.execPath, [...strip, 'scripts/webp-legacy-media.mjs']);
@@ -187,7 +209,7 @@ if (usesLegacyUploads(manifest)) {
   step(process.execPath, [...strip, 'scripts/rewrite-webp-refs.mjs']);
   step(process.execPath, ['scripts/check-file-count.mjs']);
   step(process.execPath, ['scripts/check-legacy-media.mjs']);
-} else {
+} else if (mediaPlan.action === 'run') {
   console.log(`${DIM}· media.legacyUploads is off; no migrated-media steps${RESET}`);
 }
 

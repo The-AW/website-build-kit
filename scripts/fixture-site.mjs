@@ -31,6 +31,7 @@
  */
 
 import { createServer } from 'node:http';
+import { crc32, deflateSync } from 'node:zlib';
 
 const argv = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -53,6 +54,15 @@ const KNOWN_FAULTS = [
   'allows-cross-origin', // a submission from another origin accepted instead of 403
   'coerces-malformed', // a non-string field coerced into a lead instead of refused
   'redirect-blocked', // a page that 302s somewhere recon must refuse to follow
+  /* ── Money pages (check-money-pages, measure-lcp): /money/ is the deployed page, /__source/money/ the old site ── */
+  'money-href', // an affiliate link whose href changed
+  'money-link-missing', // an affiliate link that is gone
+  'money-table', // a price that changed
+  'money-hidden', // a link still in the HTML but display:none
+  'money-covered', // a full-screen overlay over every link
+  'lcp-slow', // the hero image arrives 1.5 s late
+  'no-https-redirect', // http:// served as a page instead of a 301 to https (the /__http-probe/ path)
+  'http-redirect-drops-query', // ...or a 301 that loses the query string
 
   /* ── Faults only a browser can see ───────────────────────────────────────
    * Everything above is visible to `fetch`. These five are not: the response
@@ -76,6 +86,28 @@ for (const f of FAULTS) {
 const BASE = `http://127.0.0.1:${PORT}`;
 
 /** A 1x1 PNG, served as both the page's image and its favicon. */
+/* A noisy RGB PNG. Chrome does not count a stretched 1x1 pixel as the largest contentful paint (it is too
+   low-entropy), so the money page's hero has to be a real picture for lcp-slow to be measurable. */
+function noisyPng(width, height) {
+  const raw = Buffer.alloc((width * 3 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width * 3; x += 1) raw[y * (width * 3 + 1) + 1 + x] = (x * 31 + y * 17 + ((x * y) % 97) * 7) & 255;
+  }
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), body.length + 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+const HERO = noisyPng(300, 150);
 const PIXEL = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
@@ -236,6 +268,36 @@ const server = createServer((req, res) => {
   };
 
   if (path === '/__ready') return send(200, 'text/plain', 'ready');
+
+  /* A money page: affiliate links, a price table, a hero image. `/__source/money/` is the same page as the
+     "old site" serves it; every fault below touches only the deployed copy. */
+  if (path === '/money/' || path === '/__source/money/') {
+    const deployed = path === '/money/';
+    const fault = (name) => deployed && FAULTS.has(name);
+    const link = (id, label) => `<p><a class="btn" href="https://shop.example.invalid/${id}?tag=aw" rel="nofollow sponsored" target="_blank"${fault('money-hidden') && id === 'b' ? ' style="display:none"' : ''}>${label}</a></p>`;
+    const price = fault('money-table') ? '19' : '10';
+    const linkC = fault('money-href') ? '?tag=other' : '?tag=aw';
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Best widgets</title>
+<link rel="icon" href="data:,"><style>body{margin:0;font-family:sans-serif}img{display:block;width:100%;max-width:600px;height:300px;object-fit:cover}</style></head><body>
+${fault('money-covered') ? '<div style="position:fixed;inset:0;z-index:9"></div>' : ''}<main class="entry-content"><h1>Best widgets</h1><img src="/big-hero.png" width="600" height="300" alt="Widgets">
+<p>Our pick of the widgets, tested.</p>
+<table><tr><th>Model</th><th>Price</th></tr><tr><td>Widget A</td><td>$${price}</td></tr><tr><td>Widget B</td><td>$20</td></tr></table>
+${link('a', 'Buy Widget A')}${fault('money-link-missing') ? '' : link('b', 'Buy Widget B')}<p><a href="https://shop.example.invalid/c${linkC}" rel="nofollow sponsored" target="_blank">Widget C</a></p></main></body></html>`;
+    return send(200, 'text/html', html);
+  }
+  if (path === '/big-hero.png') {
+    const deliver = () => { res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' }); res.end(HERO); };
+    if (FAULTS.has('lcp-slow')) return void setTimeout(deliver, 1500);
+    return deliver();
+  }
+  /* What verify's http → https probe is pointed at (VERIFY_HTTP_PROBE). A fixture is plain http, so the
+     real "http://host/" cannot be the probe; this path plays that request. */
+  if (path === '/__http-probe/') {
+    if (FAULTS.has('no-https-redirect')) return send(200, 'text/html', '<h1>served over http</h1>');
+    const query = FAULTS.has('http-redirect-drops-query') ? '' : (req.url.split('?')[1] ? `?${req.url.split('?')[1]}` : '');
+    res.writeHead(301, { location: `https://${req.headers.host}/__http-probe/${query}` });
+    return res.end();
+  }
   /*
    * A page that redirects somewhere the crawler must refuse to follow — the
    * SSRF shape recon's guard exists for. The old site is not ours, and a 302

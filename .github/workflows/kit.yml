@@ -194,6 +194,15 @@ jobs:
           npm run test:leads
           npm run test:leads-worker
 
+      # Launch checks learned on a migration: the http -> https probe's rules, and the gates build of a site whose
+      # media is kept outside Git (skip with a notice; undeployable; production refuses). The second swaps
+      # aw-migration.json and deletes dist/ and .aw/ in place and restores them, so it stays BEFORE the clean build.
+      - name: Launch checks (http to https, media kept outside Git)
+        working-directory: template
+        run: |
+          npm run test:redirect
+          npm run test:media-skip
+
       - name: Template builds from clean
         working-directory: template
         env:

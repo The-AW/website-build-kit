@@ -6,6 +6,25 @@ export const CONFIG_DIR = '.aw';
 export const COMPATIBILITY_DATE = '2026-07-01';
 
 /**
+ * How the Worker takes its hostname: `targets.cloudflare.<env>.attach`.
+ *
+ *  - `custom_domain` (default): a Worker custom domain. Cloudflare REPLACES the hostname's DNS record
+ *    with a Worker record, so a hostname that already points at the old server cannot take it without
+ *    an override, and rolling back means recreating the DNS record (an NXDOMAIN gap, up to the zone's
+ *    SOA negative TTL, as much as 30 minutes).
+ *  - `route` (the documented default for CUTTING OVER an existing hostname, docs/production-cutover.md):
+ *    a zone route `<host>/*` over the EXISTING proxied DNS record. Cutover changes no DNS, and rollback
+ *    is deleting the route: the old origin answers again within seconds. Needs the zone id.
+ * Exactly one route either way.
+ */
+export const ATTACH_MODES = ['custom_domain', 'route'];
+export function expectedRoute(target) {
+  return target.attach === 'route'
+    ? { pattern: `${target.hostname}/*`, zone_id: target.zoneId }
+    : { pattern: target.hostname, custom_domain: true };
+}
+
+/**
  * Contact runtimes (Astro server output, /api/* Worker-first):
  *  - `private_crm`: forward to AW's existing private CRM through a site-written adapter.
  *  - `d1_leads`: store each lead in the site's OWN Cloudflare D1 database (binding LEADS_DB,
@@ -142,6 +161,11 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
 
   const workers = manifest?.targets?.workers ?? {};
   const cloudflareTarget = manifest?.targets?.cloudflare?.[environment] ?? {};
+  const attach = cloudflareTarget.attach ?? 'custom_domain';
+  if (!ATTACH_MODES.includes(attach)) add(`targets.cloudflare.${environment}.attach must be "custom_domain" or "route".`);
+  if (attach === 'route' && !validId(cloudflareTarget.zoneId)) {
+    add(`targets.cloudflare.${environment}.zoneId must be the 32-character zone ID: attach "route" binds the route to that zone.`);
+  }
   for (const env of ['staging', 'production']) {
     const name = workers[env];
     if (!validWorker(name)) add(`targets.workers.${env} must be a valid Cloudflare Worker name.`);
@@ -327,6 +351,7 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       worker,
       accountId: cloudflareTarget.accountId ?? '',
       zoneId: cloudflareTarget.zoneId ?? '',
+      attach: ATTACH_MODES.includes(attach) ? attach : 'custom_domain',
       environment,
       phase,
       runtimeEnabled: CONTACT_RUNTIME_CHOICES.includes(choice),
@@ -373,7 +398,7 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
       html_handling: 'auto-trailing-slash',
     },
     observability: { enabled: true },
-    routes: [{ pattern: result.hostname, custom_domain: true }]
+    routes: [expectedRoute(result)]
   };
   if (validId(result.accountId)) config.account_id = result.accountId;
   if (runtimeEnabled) config.compatibility_flags = ['nodejs_compat'];
@@ -407,8 +432,10 @@ export function validateWranglerDeployConfig(config, target, { requireWorkerEntr
     errors.push(`name must match the manifest ${target.environment} Worker (${target.worker}).`);
   }
   const routes = Array.isArray(config.routes) ? config.routes : [];
-  if (config.route !== undefined || routes.length !== 1 || routes[0]?.pattern !== target.hostname || routes[0]?.custom_domain !== true) {
-    errors.push(`routes must contain exactly one custom-domain route for ${target.hostname}, with no alternate route.`);
+  if (config.route !== undefined || routes.length !== 1 || JSON.stringify(routes[0]) !== JSON.stringify(expectedRoute(target))) {
+    errors.push(target.attach === 'route'
+      ? `routes must contain exactly one zone route ${target.hostname}/* (zone ${target.zoneId}), with no alternate route.`
+      : `routes must contain exactly one custom-domain route for ${target.hostname}, with no alternate route.`);
   }
   if (config.workers_dev !== false) {
     errors.push('workers_dev must be false so the Worker is not exposed on an alternate workers.dev hostname.');

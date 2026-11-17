@@ -99,3 +99,39 @@ export async function guardDisk(path, label) {
     await new Promise((resolve) => setTimeout(resolve, 30_000));
   }
 }
+
+/** Written when a build skipped the migrated-media steps; scripts/deploy-aw.mjs refuses to deploy while it exists. */
+export const MEDIA_SKIPPED_MARKER = '.aw/media-skipped.json';
+
+/** Are the originals the migrated-media steps need on this machine? A directory holding at least one file. */
+export function legacyOriginalsPresent(root = '.') {
+  const dir = join(root, LEGACY_ORIGINALS, UPLOADS);
+  if (!existsSync(dir)) return false;
+  for (const _file of walk(dir)) return true;
+  return false;
+}
+
+/**
+ * What a build does about the migrated-media steps (`media.legacyUploads`), as a decision a test can read.
+ *
+ * The originals are kept OUTSIDE Git (build.md §5b), so a CI runner that clones the repository never has them,
+ * and a check that builds every push would be red forever: a gate nobody can make green is a gate everyone
+ * learns to ignore. So CI may build WITHOUT them, but only on staging, only when it says so
+ * (AW_ALLOW_MISSING_MEDIA=1), and the result is marked undeployable.
+ *
+ *  - run:    do the migrated-media steps (the flag is on and the originals are here, or the flag is off: nothing to skip)
+ *  - skip:   the flag is on, the originals are missing, CI said so, and this is staging
+ *  - refuse: the flag is on, the originals are missing, and that was not said (a missing download is a failure, not a notice)
+ *  - refuse-production: AW_ALLOW_MISSING_MEDIA on a production build is never honoured
+ */
+export function legacyMediaPlan({ enabled, environment, originalsPresent, allowMissing }) {
+  if (!enabled) return { action: 'run', reason: 'media.legacyUploads is off' };
+  if (allowMissing && environment === 'production') {
+    return { action: 'refuse-production', reason: 'AW_ALLOW_MISSING_MEDIA is set on a production build. A production build without its media is a site with broken images; it is never allowed.' };
+  }
+  if (originalsPresent) return { action: 'run', reason: 'the originals are present' };
+  if (allowMissing) {
+    return { action: 'skip', reason: `${LEGACY_ORIGINALS}/${UPLOADS} is missing and AW_ALLOW_MISSING_MEDIA=1: the migrated-media steps are SKIPPED. This build is for the gates only and cannot be deployed.` };
+  }
+  return { action: 'refuse', reason: `${LEGACY_ORIGINALS}/${UPLOADS} is missing. Put the originals there; on CI, where media is kept outside Git, set AW_ALLOW_MISSING_MEDIA=1 for a staging gates build.` };
+}
