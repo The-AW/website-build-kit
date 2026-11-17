@@ -12,7 +12,7 @@ import { noindexLegalRoutes } from './src/lib/legal-routes.mjs';
 // it and passes it through before Astro loads this config.
 const MIGRATION = JSON.parse(readFileSync(new URL('./aw-migration.json', import.meta.url), 'utf8'));
 const SITE_ENV = process.env.PUBLIC_SITE_ENV ?? 'development';
-const CONTACT_RUNTIME = MIGRATION.forms?.choice === 'private_crm';
+const CONTACT_RUNTIME = ['private_crm', 'd1_leads'].includes(MIGRATION.forms?.choice);
 
 /*
  * Refuse to BUILD for a deploy without saying which deploy it is.

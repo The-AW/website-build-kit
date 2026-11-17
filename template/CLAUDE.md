@@ -105,6 +105,22 @@ Free cap, and serves old URLs through `src/legacy-worker.ts` (`not_found_handlin
 unknown URL is still a real 404). `build.md` §5b has the steps and `npm run test:legacy-media`
 proves the Worker. Upload filenames are cached immutable for a year, so a replaced image gets a new name.
 
+**`forms.choice: "d1_leads"` is the simple form when no CRM is required.** Each verified submission is
+one row in the site's own Cloudflare D1 database: same-origin `POST /api/leads`, HTTPS-only exact-Origin
+and host checks, a 16 KiB body cap, a per-visitor rate limit (the Workers rate-limiting binding,
+`LEADS_RATE_LIMITER`, keyed by an HMAC of the IP), field validation and explicit consent, Turnstile
+Siteverify (hostname and action checked), then one parameterised INSERT. No CRM, no shared secret. It ships
+in the template: `src/lib/lead-api.ts` (handler), `lead-submission.ts` (fields and every visitor-facing
+message), `lead-store.ts`, `src/components/LeadForm.astro`, `migrations/0001_create_leads.sql`. A site adds
+a two-line API route file (leads.ts in the api pages folder; the validator prints it if missing) and the `forms` block in
+`aw-migration.json` (Turnstile site key, D1 name + id and rate-limiter namespace per environment). Production
+stays **closed** (`LEADS_ENABLED=false`) until `forms.productionEnabled` is true with a recorded
+`productionAcceptance`. Read leads with `npm run leads:staging` / `leads:production`: personal data is
+**masked** unless you pass `--reveal`. `docs/aw-migration-process.md` §Contact has the setup order; delivery
+of rows by email or Slack is a separate, later step, and there is **no retention job**, so do not publish a
+retention period until one exists (`stacks.md` retention table). `npm run test:form`, `test:leads` and
+`test:leads-worker` prove it; the last builds the template with the choice on and runs the Worker.
+
 **The static default has no contact form runtime, KV archive or Turnstile requirement.** The
 retained `modules/contact/` code is an implementation draft that archives to KV; it is not AW's
 existing-private-CRM path and has not been proven end-to-end. Do not copy/enable it unchanged.

@@ -505,8 +505,9 @@ For projects with an explicitly selected form, document its storage and data flo
 
 | Option | Use only when |
 | --- | --- |
+| **Own D1 table** ✅ | AW forms choice is `d1_leads`: no CRM is required. Costs: the owner has no inbox or CRM view until someone builds delivery (read rows with `npm run leads:staging`), and nothing enforces retention until a deletion job exists. Versus the CRM: no shared secret, no second system to keep in step, one database per environment |
 | **Existing private CRM** | AW forms choice is `private_crm`; the site adapter and CRM account already exist |
-| **Cloudflare KV / D1** | A separate project owner explicitly selected a first-party store and its operations |
+| **Cloudflare KV** | A separate project owner explicitly selected a first-party store and its operations |
 | **Airtable / Google Sheets** | A separate project selected the SaaS and accepted its OAuth/data-processing dependency |
 
 ### A retention period must name the thing that enforces it
@@ -528,7 +529,8 @@ to. If none exists, do not claim a fixed retention period; resolve the implement
 owner's existing CRM administrator or counsel.
 
 **Reading submissions:** the AW static starter has no form, lead archive, export endpoint or
-operator notification. If `forms.choice: "private_crm"`, use the existing CRM's access controls,
+operator notification. If `forms.choice: "d1_leads"`, read rows with `npm run leads:staging` /
+`leads:production`, which mask personal data unless `--reveal` is passed. If `forms.choice: "private_crm"`, use the existing CRM's access controls,
 data retrieval and deletion workflow; do not create a CSV/KV sidecar or install an unrelated lead
 management package by default.
 

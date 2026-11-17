@@ -14,10 +14,8 @@ type SiteverifyResponse = {
 /**
  * Validate a browser token at Cloudflare before accepting a lead.
  *
- * The visitor IP is deliberately not sent as `remoteip`; it is optional, and
- * omitting it avoids sharing another identifier beyond what the widget already
- * sends. Hostname and action are checked in addition to `success` so a valid
- * token from a different widget or host cannot be replayed into this form.
+ * Check the hostname and action. When supplied, the visitor IP goes only to
+ * Siteverify, never to the CRM.
  */
 export async function verifyTurnstile(
   token: string | undefined,
@@ -25,6 +23,7 @@ export async function verifyTurnstile(
   expectedHostname: string,
   fetcher: typeof fetch = fetch,
   timeoutMs = 5000,
+  remoteIp?: string,
 ): Promise<TurnstileResult> {
   if (!secretKey || !expectedHostname) return { ok: false, reason: 'unavailable' };
   if (!token || token.trim().length === 0 || token.length > MAX_TOKEN_LENGTH) {
@@ -34,10 +33,12 @@ export async function verifyTurnstile(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const parameters: Record<string, string> = { secret: secretKey, response: token };
+    if (remoteIp?.trim()) parameters.remoteip = remoteIp.trim();
     const response = await fetcher(SITEVERIFY_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ secret: secretKey, response: token }),
+      body: new URLSearchParams(parameters),
       signal: controller.signal,
     });
     if (!response.ok) return { ok: false, reason: 'unavailable' };

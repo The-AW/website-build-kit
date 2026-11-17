@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { readMigrationManifest, validateMigrationManifest } from './lib/aw-migration.mjs';
+import { contactRuntime, readMigrationManifest, validateMigrationManifest } from './lib/aw-migration.mjs';
 
 const env = process.env.PUBLIC_SITE_ENV;
 const reset = '\x1b[0m';
@@ -54,7 +54,7 @@ if (target.legacyUploads) {
 } else if (config.assets?.not_found_handling !== '404-page') {
   fail(`${configPath} must preserve a real 404 with not_found_handling: 404-page.`);
 }
-if (manifest.forms.choice === 'private_crm') {
+if (contactRuntime(manifest)) {
   if (config.assets?.binding !== 'ASSETS') {
     fail(`${configPath} must bind assets as ASSETS for prerendered pages in contact runtime mode.`);
   }
