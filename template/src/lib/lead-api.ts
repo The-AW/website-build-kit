@@ -33,6 +33,8 @@ export interface LeadEnv {
   LEADS_DB?: LeadDatabase;
   LEADS_RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
   LEADS_RATE_LIMIT_HMAC_SECRET?: string;
+  /** This site's production hostname, written on every lead row in the shared database. */
+  LEADS_SITE?: string;
 }
 
 export interface LeadDeps {
@@ -130,12 +132,14 @@ export async function handleLeadPost(request: Request, env: LeadEnv, ip: string 
   }
 
   const stored = await storeLead(env.LEADS_DB, {
+    site: env.LEADS_SITE?.trim().toLowerCase() ?? '',
     name: validated.value.name,
     email: validated.value.email,
     phone: validated.value.phone,
     message: validated.value.message,
     sourceUrl: `${requestUrl.origin}${CONTACT_PATH}`,
     userAgent: request.headers.get('user-agent'),
+    utm: validated.value.utm,
   }, deps.now);
   if (!stored.ok) {
     /* A lead that reached a verified human and was then not stored is the worst failure this route

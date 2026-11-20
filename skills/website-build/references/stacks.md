@@ -505,7 +505,7 @@ For projects with an explicitly selected form, document its storage and data flo
 
 | Option | Use only when |
 | --- | --- |
-| **Own D1 table** ✅ | AW forms choice is `d1_leads`: no CRM is required. Costs: the owner has no inbox or CRM view until someone builds delivery (read rows with `npm run leads:staging`), and nothing enforces retention until a deletion job exists. Versus the CRM: no shared secret, no second system to keep in step, one database per environment |
+| **Shared D1 lead table** ✅ | AW forms choice is `d1_leads`: no CRM is required. Every site writes to The-AW's two shared lead databases (`websites-contact-crm-staging` / `-production`, never one per site; Workers Free allows 10 D1 databases) with its own `site`; the private inbox, site filter and 730-day retention job live in github.com/The-AW/websites-contact-crm. No shared secret: the site Worker binds the database directly. |
 | **Existing private CRM** | AW forms choice is `private_crm`; the site adapter and CRM account already exist |
 | **Cloudflare KV** | A separate project owner explicitly selected a first-party store and its operations |
 | **Airtable / Google Sheets** | A separate project selected the SaaS and accepted its OAuth/data-processing dependency |
@@ -521,7 +521,7 @@ in the policy or a field in source code expires external copies.
 | --- | --- |
 | **Workers KV** | `expirationTtl` on each write |
 | **R2** | Bucket lifecycle rule in account configuration |
-| **D1** | Scheduled deletion/retention job |
+| **D1** | Scheduled deletion/retention job (for `d1_leads`: the websites-contact-crm Worker's daily job, 730 days) |
 | **Existing CRM** | Its actual retention controls and deletion workflow |
 
 Before the privacy notice goes live, name the enforcement mechanism for every store the site writes

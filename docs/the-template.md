@@ -254,7 +254,7 @@ where you look at half-finished work.
 
 - [ ] Static migrations (`forms.choice: "none"`) need no Turnstile key, Worker secret, KV archive,
       email/Slack provider or contact runtime; optional modules do not block launch.
-- [ ] If `forms.choice: "d1_leads"`, follow `docs/aw-migration-process.md` (D1 database, Turnstile widget, two
+- [ ] If `forms.choice: "d1_leads"`, follow `docs/aw-migration-process.md` (the shared lead databases, the group Turnstile widget, two
       Worker secrets, the two-line route, `LeadForm`), submit once on staging and read the row with
       `npm run leads:staging`. No CRM is involved.
 - [ ] If `forms.choice: "private_crm"`, implement a same-origin API, Turnstile Siteverify and a

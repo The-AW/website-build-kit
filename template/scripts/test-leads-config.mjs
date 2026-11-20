@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
-  D1_LEADS_ROUTE, createWranglerConfig, leadsEnabledFor, validateMigrationManifest, validateWranglerDeployConfig,
+  D1_LEADS_ROUTE, SHARED_LEADS_DATABASES, createWranglerConfig, leadsEnabledFor, validateMigrationManifest, validateWranglerDeployConfig,
 } from './lib/aw-migration.mjs';
 
 /**
@@ -14,7 +14,9 @@ import {
  */
 const ID = '1234567890abcdef1234567890abcdef';
 const ZONE = 'abcdef1234567890abcdef1234567890';
-const DB = (n) => ({ name: `client-leads-${n}`, id: n === 'staging' ? '11111111-2222-4333-8444-555555555555' : '66666666-7777-4888-8999-000000000000' });
+// The two shared lead databases: the only ids a site may bind (never one per site).
+const DB = (n) => ({ ...SHARED_LEADS_DATABASES[n] });
+const PER_SITE = { name: 'client-leads', id: '66666666-7777-4888-8999-000000000000' };
 
 const manifest = (forms = {}) => ({
   schemaVersion: 1,
@@ -29,7 +31,8 @@ const manifest = (forms = {}) => ({
   inventories: { routes: 'recon/urls.txt', media: 'recon/media.csv', redirects: 'public/_redirects', redirectExceptions: [] },
   forms: {
     choice: 'd1_leads',
-    turnstileSiteKeys: { staging: '0x4AAAAAAAstaging000000', production: '0x4AAAAAAAproduction0000' },
+    // One group widget for staging and production (aw-loans / aw-affiliate / aw-other).
+    turnstileSiteKeys: { staging: '0x4AAAAAAAgroup00000000', production: '0x4AAAAAAAgroup00000000' },
     leadsDatabases: { staging: DB('staging'), production: DB('production') },
     rateLimiterNamespaceIds: { staging: '4001', production: '4002' },
     ...forms,
@@ -40,7 +43,7 @@ let dir;
 const site = (files = {}) => {
   if (dir) rmSync(dir, { recursive: true, force: true });
   dir = mkdtempSync(join(tmpdir(), 'kit-leads-'));
-  const all = { 'src/pages/api/leads.ts': `${D1_LEADS_ROUTE}\n`, 'migrations/0001_create_leads.sql': '-- schema\n', ...files };
+  const all = { 'src/pages/api/leads.ts': `${D1_LEADS_ROUTE}\n`, ...files };
   for (const [rel, body] of Object.entries(all)) { if (body === undefined) continue; mkdirSync(dirname(join(dir, rel)), { recursive: true }); writeFileSync(join(dir, rel), body); }
   return dir;
 };
@@ -75,9 +78,8 @@ test('the route file is required, and it must be the kit handler', () => {
 });
 
 test('the schema, the Turnstile key, the database and the rate-limit namespace are required where the form is open', () => {
-  site();
-  rmSync(join(dir, 'migrations'), { recursive: true });
-  assert.match(errors(manifest()), /needs the leads schema in migrations\//);
+  site({ 'migrations/0001_create_leads.sql': '-- per-site schema\n' });
+  assert.match(errors(manifest()), /per-site leads schema; delete it/);
   site();
   assert.match(errors(manifest({ turnstileSiteKeys: {} })), /turnstileSiteKeys\.staging must contain the public Turnstile site key/);
   assert.match(errors(manifest({ leadsDatabases: {} })), /leadsDatabases\.staging must name the D1 database/);
@@ -88,23 +90,35 @@ test('the schema, the Turnstile key, the database and the rate-limit namespace a
   assert.equal(errors(manifest({ turnstileSiteKeys: { staging: 'k' }, leadsDatabases: { staging: DB('staging') } }), 'production'), '');
 });
 
-test('opening production needs the acceptance record, its own widget and its own database', () => {
+test('a per-site lead database is refused with the rule spelled out, in either environment', () => {
+  site();
+  for (const env of ['staging', 'production']) {
+    const m = manifest({ leadsDatabases: { staging: env === 'staging' ? PER_SITE : DB('staging'), production: env === 'production' ? PER_SITE : DB('production') } });
+    const message = errors(m, env);
+    assert.match(message, new RegExp(`must be the shared ${env} lead database websites-contact-crm-${env}`));
+    assert.match(message, /exactly TWO lead databases for every website/);
+    assert.match(message, /never create one per site/);
+  }
+  assert.match(errors(manifest({ leadsDatabases: { staging: DB('production'), production: DB('production') } }), 'staging'), /must be the shared staging lead database/, 'crossed ids are refused');
+});
+
+test('opening production needs the acceptance record and the shared production database', () => {
   site();
   const open = (extra = {}) => manifest({ productionEnabled: true, productionAcceptance: { stagingSubmissionVerified: true, testRecordDeleted: true, acceptedOn: '2026-11-17', acceptedBy: 'Site Owner' }, ...extra });
   assert.equal(errors(open(), 'production'), '');
   assert.match(errors(manifest({ productionEnabled: true }), 'production'), /productionAcceptance is missing/);
   assert.match(errors(open({ productionAcceptance: { stagingSubmissionVerified: false, testRecordDeleted: true, acceptedOn: '2026-11-17', acceptedBy: 'x' } }), 'production'), /stagingSubmissionVerified must be true/);
   assert.match(errors(open({ productionAcceptance: { stagingSubmissionVerified: true, testRecordDeleted: false, acceptedOn: '17/11/2026', acceptedBy: '' } }), 'production'), /testRecordDeleted must be true.*acceptedOn must be the ISO date.*acceptedBy must name/);
-  assert.match(errors(open({ turnstileSiteKeys: { staging: 'same', production: 'same' } }), 'production'), /production must be its own widget/);
-  assert.match(errors(open({ leadsDatabases: { staging: DB('staging'), production: DB('staging') } }), 'production'), /production must be its own D1 database/);
+  assert.equal(errors(open({ turnstileSiteKeys: { staging: 'same', production: 'same' } }), 'production'), '', 'the group widget serves both environments');
+  assert.match(errors(open({ leadsDatabases: { staging: DB('staging'), production: DB('staging') } }), 'production'), /must be the shared production database/);
   assert.match(errors(open({ productionEnabled: 'yes' }), 'production'), /productionEnabled must be a boolean/);
 });
 
 test('the generated config binds D1 and the rate limiter, sets the non-secret vars, and routes /api/* first', () => {
   site();
   const staging = createWranglerConfig(manifest(), 'staging', dir);
-  assert.deepEqual(staging.vars, { LEADS_ENABLED: 'true', LEADS_ALLOWED_ORIGINS: 'https://staging.client.co.uk', TURNSTILE_ALLOWED_HOSTNAME: 'staging.client.co.uk' });
-  assert.deepEqual(staging.d1_databases, [{ binding: 'LEADS_DB', database_name: 'client-leads-staging', database_id: DB('staging').id, migrations_dir: '../migrations' }]);
+  assert.deepEqual(staging.vars, { LEADS_ENABLED: 'true', LEADS_ALLOWED_ORIGINS: 'https://staging.client.co.uk', TURNSTILE_ALLOWED_HOSTNAME: 'staging.client.co.uk', LEADS_SITE: 'client.co.uk' });
+  assert.deepEqual(staging.d1_databases, [{ binding: 'LEADS_DB', database_name: 'websites-contact-crm-staging', database_id: '61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62' }], 'the shared staging database, no migrations_dir');
   assert.deepEqual(staging.ratelimits, [{ name: 'LEADS_RATE_LIMITER', namespace_id: '4001', simple: { limit: 10, period: 60 } }]);
   assert.deepEqual(staging.assets.run_worker_first, ['/api/*']);
   assert.equal(staging.assets.not_found_handling, '404-page', 'a real static 404 is unchanged');
@@ -112,6 +126,8 @@ test('the generated config binds D1 and the rate limiter, sets the non-secret va
   const production = createWranglerConfig(manifest(), 'production', dir);
   assert.equal(production.vars.LEADS_ENABLED, 'false', 'production is generated closed');
   assert.equal(production.ratelimits[0].namespace_id, '4002');
+  assert.equal(production.vars.LEADS_SITE, 'client.co.uk', 'staging and production rows carry the production hostname');
+  assert.equal(production.d1_databases[0].database_id, 'e31827c7-4909-4478-866e-cd538231cd3b');
   assert.ok(!JSON.stringify(staging).match(/SECRET|INGESTION/), 'no secret name or CRM var in the config');
 });
 
@@ -144,6 +160,9 @@ test('the deploy validator refuses a config that disagrees with the manifest, in
   refuse({ vars: { ...good.vars, LEADS_INGESTION_URL: 'https://crm.example.org' } }, /CRM ingestion vars must not be configured/);
   refuse({ d1_databases: [] }, /needs a LEADS_DB D1 binding/);
   refuse({ ratelimits: [] }, /ratelimits must bind LEADS_RATE_LIMITER at 10 requests per 60 seconds/);
+  refuse({ d1_databases: [{ binding: 'LEADS_DB', database_name: PER_SITE.name, database_id: PER_SITE.id }] }, /must be the shared staging lead database.*never create one per site/);
+  refuse({ d1_databases: [{ ...good.d1_databases[0], migrations_dir: '../migrations' }] }, /must not carry migrations_dir/);
+  refuse({ vars: { ...good.vars, LEADS_SITE: undefined } }, /LEADS_SITE must be the site's production hostname/);
   refuse({ ratelimits: [{ ...good.ratelimits[0], simple: { limit: 1000, period: 60 } }] }, /ratelimits must bind/);
   // Production, closed: a config that opens it without the acceptance record is refused.
   const prod = { ...createWranglerConfig(manifest(), 'production', dir), account_id: ID, main: 'entry.mjs' };

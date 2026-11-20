@@ -1,5 +1,7 @@
 /**
- * List the latest contact-form leads stored in a site's D1 database (`forms.choice: "d1_leads"`).
+ * List the latest contact-form leads THIS site stored in The-AW's shared lead database
+ * (`forms.choice: "d1_leads"`). The table holds every site's leads, so the query is always filtered
+ * to `site` = this site's production hostname. All sites at once: the CRM inbox (websites-contact-crm).
  *
  *   npm run leads:staging                 # latest 20, personal data MASKED
  *   npm run leads:production -- 50        # latest 50 (max 200)
@@ -17,6 +19,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { presentLead } from './lib/leads-mask.mjs';
+import { leadsSite } from './lib/aw-migration.mjs';
 
 const args = process.argv.slice(2);
 const env = args[0];
@@ -37,7 +40,9 @@ const accountId = manifest.targets?.cloudflare?.[env]?.accountId;
 if (!db?.name || !accountId) fail(`aw-migration.json needs forms.leadsDatabases.${env}.name and targets.cloudflare.${env}.accountId.`);
 
 const limit = Math.min(200, Math.max(1, Number.parseInt(limitArg ?? '20', 10) || 20));
-const where = status ? `WHERE status = '${status}' ` : '';
+const site = leadsSite(manifest);
+if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(site)) fail('hosts.production in aw-migration.json must be the site URL; its hostname selects this site\'s rows.');
+const where = `WHERE site = '${site}' ${status ? `AND status = '${status}' ` : ''}`;
 const query = `SELECT id, created_at, status, name, email, phone, consent, source_url, message, user_agent FROM leads ${where}ORDER BY created_at DESC LIMIT ${limit}`;
 
 if (reveal) console.error('! --reveal: personal data follows. Do not paste it anywhere public.');
@@ -51,7 +56,7 @@ if (run.status !== 0) {
   process.exit(run.status ?? 1);
 }
 const rows = JSON.parse(run.stdout)?.[0]?.results ?? [];
-console.log(`${rows.length} lead(s) in ${db.name} (newest first${reveal ? '' : ', personal data masked; --reveal shows it'})\n`);
+console.log(`${rows.length} lead(s) for ${site} in ${db.name} (newest first${reveal ? '' : ', personal data masked; --reveal shows it'})\n`);
 for (const stored of rows) {
   const r = presentLead(stored, { reveal });
   console.log(`${r.created_at}  [${r.status}]  ${r.name} <${r.email}>${r.phone ? `  ${r.phone}` : ''}  consent=${r.consent}`);

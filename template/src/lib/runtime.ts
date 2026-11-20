@@ -24,6 +24,7 @@ type Bindings = {
   LEADS_DB?: D1Database;
   LEADS_RATE_LIMITER?: RateLimit;
   LEADS_RATE_LIMIT_HMAC_SECRET?: string;
+  LEADS_SITE?: string;
 };
 
 export function bindings(): Bindings {

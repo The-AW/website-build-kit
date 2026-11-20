@@ -449,8 +449,9 @@ project.
 Do not use LeadConnector for contact forms. The AW migration starter is static by default: no
 contact endpoint, Worker runtime, KV binding, Turnstile key or notification service. Optional
 modules do not block a static migration. If a site selects a form, the intended path is a
-same-origin API, Turnstile Siteverify and either the site's own D1 table (`forms.choice: "d1_leads"`, the
-simple default when no CRM is required) or that site's adapter to AW's existing private CRM
+same-origin API, Turnstile Siteverify and a row in The-AW's shared lead database (`forms.choice: "d1_leads"`, the
+simple default when no CRM is required: two databases for the whole company, staging and production, never
+one per site; Turnstile widgets shared per group — see template/CLAUDE.md) or that site's adapter to AW's existing private CRM
 (`private_crm`); no email/Slack/Brevo provider is mandatory. The retained contact implementation is still a KV-only
 draft, not the CRM path, and is not proven end-to-end. Do not enable or claim it works unchanged.
 Before any later retirement of Cloudways, verify the backup and shared-server dependencies. Keep

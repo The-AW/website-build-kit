@@ -66,7 +66,7 @@ the old server. If some paths must keep going to the old origin, they need a nar
 
 1. **Re-read the prestate** (§2.3). Stop if anything differs from the snapshot.
 2. **Create the contact resources now and not before**, if the site has a form (`forms.choice`
-   `d1_leads`: its own D1 database with `migrations/` applied, a Turnstile widget for the production host,
+   `d1_leads`: the shared production lead database (never a new one) and the group's shared Turnstile widget with the site's root domain on it,
    a rate-limiter namespace; production opens only with `forms.productionEnabled` and a recorded
    acceptance). Then `npm run build:production` and the dry run again.
 3. **Deploy.** `npm run deploy:production -- --confirm-production`. With `attach: "route"` **this deploy is the

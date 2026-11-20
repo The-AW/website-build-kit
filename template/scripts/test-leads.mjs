@@ -36,12 +36,14 @@ function mockDatabase({ fail = false } = {}) {
 }
 
 const LEAD = {
+  site: 'www.example.org',
   name: 'Test Person',
   email: 'test@example.invalid',
   phone: '15550100199',
   message: 'A synthetic test message; not a real enquiry.',
   sourceUrl: 'https://www.example.org/contact/',
   userAgent: 'TestAgent/1.0',
+  utm: { source: 'google', medium: 'cpc', campaign: 'synthetic', term: null, content: null },
 };
 
 test('validates and normalizes the submission fields', () => {
@@ -106,11 +108,14 @@ test('stores a verified lead as one parameterised D1 insert with status new', as
   assert.equal(db.calls.length, 1);
   const { query, values } = db.calls[0];
   assert.equal(query, INSERT_LEAD);
-  assert.match(query, /VALUES \(\?1, \?2, \?3, \?4, \?5, \?6, 1, \?7, \?8, 'new'\)/);
+  assert.match(query, /VALUES \(\?1, 'contact', \?2, \?3, \?4, \?5, \?6, 1, \?7, \?8, \?9, \?10, \?11, \?12, \?13, 'new', \?14\)/);
   assert.deepEqual(values, [
     '00000000-0000-4000-8000-000000000001',
+    'www.example.org',
+    LEAD.name, LEAD.email, LEAD.phone, LEAD.message, LEAD.sourceUrl,
+    'google', 'cpc', 'synthetic', null, null,
+    LEAD.userAgent,
     '2026-11-15T12:00:00.000Z',
-    LEAD.name, LEAD.email, LEAD.phone, LEAD.message, LEAD.sourceUrl, LEAD.userAgent,
   ]);
   assert.ok(!query.includes(LEAD.email), 'values are bound, never interpolated into SQL');
 });
@@ -119,10 +124,30 @@ test('stores a missing phone and user agent as NULL and caps a long user agent',
   const db = mockDatabase();
   await storeLead(db, { ...LEAD, phone: null, userAgent: null });
   assert.equal(db.calls[0].values[4], null);
-  assert.equal(db.calls[0].values[7], null);
+  assert.equal(db.calls[0].values[12], null);
   const long = mockDatabase();
   await storeLead(long, { ...LEAD, userAgent: 'x'.repeat(2000) });
-  assert.equal(long.calls[0].values[7].length, 512);
+  assert.equal(long.calls[0].values[12].length, 512);
+});
+
+test('refuses to store without a site (LEADS_SITE), and lowercases it', async () => {
+  const db = mockDatabase();
+  assert.deepEqual(await storeLead(db, { ...LEAD, site: '' }), { ok: false, reason: 'not_configured', detail: 'LEADS_SITE is missing' });
+  assert.equal(db.calls.length, 0);
+  await storeLead(db, { ...LEAD, site: 'WWW.Example.org' });
+  assert.equal(db.calls[0].values[1], 'www.example.org');
+});
+
+test('UTMs from the form are kept when sane and dropped (never refused) when not', () => {
+  const base = { name: 'Test Person', email: 'test@example.invalid', phone: '15550100199', message: 'Synthetic.', turnstileToken: 't', consent: true };
+  const ok = validateLeadSubmission({ ...base, utm: { source: ' google ', medium: 'cpc', campaign: 'x'.repeat(201), term: 5, other: 'ignored' } });
+  assert.equal(ok.ok, true);
+  if (ok.ok) assert.deepEqual(ok.value.utm, { source: 'google', medium: 'cpc', campaign: null, term: null, content: null });
+  for (const utm of [undefined, null, 'utm_source=x', ['x']]) {
+    const r = validateLeadSubmission({ ...base, utm });
+    assert.equal(r.ok, true);
+    if (r.ok) assert.deepEqual(r.value.utm, { source: null, medium: null, campaign: null, term: null, content: null });
+  }
 });
 
 test('fails closed without a binding and reports an insert failure without the submission', async () => {

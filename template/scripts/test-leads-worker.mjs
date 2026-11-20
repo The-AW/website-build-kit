@@ -51,7 +51,7 @@ const fixtureManifest = {
   forms: {
     choice: 'd1_leads',
     turnstileSiteKeys: { staging: '0x4AAAAAAAexample000000' },
-    leadsDatabases: { staging: { name: 'client-leads-staging', id: '11111111-2222-4333-8444-555555555555' } },
+    leadsDatabases: { staging: { name: 'websites-contact-crm-staging', id: '61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62' } }, // the shared staging DB, never a per-site one
     rateLimiterNamespaceIds: { staging: '4001', production: '4002' },
   },
   acceptance: { criteria: [], recordedBy: '', recordedAt: '' },
@@ -119,6 +119,8 @@ test('the template builds with forms.choice d1_leads, and the emitted config car
   assert.equal(config.assets.not_found_handling, '404-page');
   assert.equal(config.vars.LEADS_ENABLED, 'true');
   assert.equal(config.d1_databases[0].binding, 'LEADS_DB');
+  assert.equal(config.d1_databases[0].database_id, '61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62', 'the shared staging lead database');
+  assert.match(config.vars.LEADS_SITE, /^[a-z0-9.-]+\.[a-z]{2,}$/);
   assert.equal(config.ratelimits[0].name, 'LEADS_RATE_LIMITER');
   assert.equal(config.ratelimits[0].simple.limit, 10);
 });

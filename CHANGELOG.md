@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-11-20 — Two shared lead databases for every site; Turnstile widgets per group
+
+* **`d1_leads` binds The-AW's two shared lead databases**, `websites-contact-crm-staging`
+  (`61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62`) and `websites-contact-crm-production`
+  (`e31827c7-4909-4478-866e-cd538231cd3b`), instead of one database per site. Per-site lead databases had used
+  all 10 D1 databases the Workers Free plan allows, with 10–20 sites still to migrate. The build refuses any other
+  `LEADS_DB` id, with the rule in the message (`SHARED_LEADS_DATABASES` in `scripts/lib/aw-migration.mjs`).
+* **Every row says which site it came from**: the build sets `LEADS_SITE` (the production hostname, on staging rows
+  too) and the INSERT writes `site`, `form_type 'contact'` and the page's `utm_*` (the form reads them from the URL;
+  a malformed UTM is dropped, never refuses a lead). `npm run leads:staging` and `npm run leads:production` show only this site's rows.
+* **The per-site `migrations/` folder is gone**: the schema, the private inbox (filter by site) and the 730-day
+  retention job belong to github.com/The-AW/websites-contact-crm, whose `docs/site-contract.md` is the contract. A
+  site with `migrations/0001_create_leads.sql` fails validation; `migrations_dir` is never generated.
+* **Turnstile widgets are shared per group** (`aw-loans`, `aw-affiliate`, `aw-other`, ≤10 root domains each), so
+  staging and production use the same sitekey and the "production must be its own widget" check is removed. The
+  exact Siteverify `hostname` check is what keeps one site's token from another; tests now prove a token for another
+  host of the group is refused.
+
 ## 2026-11-17 — Launch checks learned on a WordPress migration (unreleased)
 
 * **`npm run verify` fails when `http://` on the production host does not 301 to `https://`**, with the path and

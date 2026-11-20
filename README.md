@@ -132,7 +132,8 @@ does ship is the skeleton of the parts that take longest to get right:
   (`build.md` §5b: `npm run legacy:stage`, `npm run legacy:widths`, `npm run legacy:webp`,
   `npm run legacy:link`, `npm run legacy:rewrite`, `npm run check:file-count`,
   `npm run check:legacy-media`, `npm run test:legacy-media`)
-- **Leads in your own D1** (`forms.choice: "d1_leads"`, the simple default when no CRM is required) — the
+- **Leads in The-AW's shared D1** (`forms.choice: "d1_leads"`, the simple default when no CRM is required;
+  two lead databases for the whole company, never one per site; Turnstile widgets shared per group) — the
   same-origin `/api/leads` route with HTTPS-only exact-Origin checks, a 16 KiB cap, a per-visitor rate limit,
   consent, Turnstile Siteverify and one parameterised INSERT; production generated closed until a recorded
   acceptance; `npm run leads:staging` and `npm run leads:production` read rows with personal data masked

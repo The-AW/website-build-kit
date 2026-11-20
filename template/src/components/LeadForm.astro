@@ -240,6 +240,16 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? ''
       if (!form.reportValidity()) return;
 
       const values = new FormData(form);
+      /* The landing page's utm_* parameters, stored with the lead (the shared table's utm_* columns). */
+      const pageUtm = () => {
+        const params = new URLSearchParams(window.location.search);
+        const utm: Record<string, string> = {};
+        for (const key of ['source', 'medium', 'campaign', 'term', 'content']) {
+          const value = params.get(`utm_${key}`);
+          if (value) utm[key] = value.slice(0, 200);
+        }
+        return utm;
+      };
       /* Prefer the token captured in the Turnstile callback — reliable even
          when the widget's own hidden input lives outside this form's tree
          (which happens if Turnstile re-parents the challenge iframe). */
@@ -268,6 +278,7 @@ const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? ''
             message: values.get('message'),
             turnstileToken: token,
             consent: values.get('consent') === 'on',
+            utm: pageUtm(),
           }),
         });
         const data = await response.json().catch(() => ({})) as {

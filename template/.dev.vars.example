@@ -4,5 +4,5 @@
 # forms.choice "d1_leads" needs these two. Uncomment them for local `wrangler dev`, and set the same
 # names as Worker secrets (`npx wrangler secret put NAME --name <worker>`); never put them in
 # aw-migration.json or wrangler vars. Uncommented, `npm run check:secrets` requires them on the Worker.
-#   TURNSTILE_SECRET_KEY=            the secret for this host's Turnstile widget
+#   TURNSTILE_SECRET_KEY=            the secret of the site group's shared widget (aw-loans / aw-affiliate / aw-other)
 #   LEADS_RATE_LIMIT_HMAC_SECRET=    at least 32 random bytes, e.g. `openssl rand -base64 48`
