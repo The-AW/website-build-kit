@@ -4490,7 +4490,8 @@ gate('refuses without a build to measure', {
 const d1Forms = (extra = {}) => ({
   choice: 'd1_leads',
   // The group's shared widget (same key both environments) and The-AW's two shared lead databases.
-  turnstileSiteKeys: { staging: '0x4AAAAAAAgroup00000000', production: '0x4AAAAAAAgroup00000000' },
+  turnstileGroup: 'other',
+  turnstileSiteKeys: { staging: '0x4AAAAAAGFvJc24kRMM91rU', production: '0x4AAAAAAGFvJc24kRMM91rU' },
   leadsDatabases: {
     staging: { name: 'websites-contact-crm-staging', id: '61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62' },
     production: { name: 'websites-contact-crm-production', id: 'e31827c7-4909-4478-866e-cd538231cd3b' },
@@ -4526,6 +4527,14 @@ gate('d1_leads with a per-site leads schema in migrations/ — must refuse', {
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 1,
   contains: 'per-site leads schema',
+});
+
+gate('d1_leads with its own Turnstile widget instead of the group\'s — must refuse', {
+  script: 'check-env.mjs',
+  files: { ...d1Files(d1Forms({ turnstileSiteKeys: { staging: '0x4AAAAAAAownwidget0000', production: '0x4AAAAAAAownwidget0000' } })), '.aw/wrangler-staging.jsonc': awConfig('staging', true) },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'must be the aw-other sitekey',
 });
 
 gate('d1_leads without the API route — must refuse', {

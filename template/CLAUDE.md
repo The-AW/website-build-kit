@@ -118,6 +118,19 @@ per site:** `aw-loans` (secured-loan lead-gen), `aw-affiliate` (blogs / product 
 Use the group's sitekey for staging and production; the Worker's exact Siteverify `hostname` check is what
 keeps one site's token from being accepted by another, so never loosen it.
 
+| `forms.turnstileGroup` | Widget | Sitekey (staging and production) |
+| --- | --- | --- |
+| `loans` | `aw-loans` | `0x4AAAAAAGI_5MENUiEK9Iek` |
+| `affiliate` | `aw-affiliate` | `0x4AAAAAAGD0eg5NV7IMhbc5` |
+| `other` | `aw-other` | `0x4AAAAAAGFvJc24kRMM91rU` |
+
+The build refuses a d1_leads site without a group or with another sitekey (`TURNSTILE_GROUPS` in
+`scripts/lib/aw-migration.mjs`). New site: add its root domain to the group's widget
+(`npx wrangler turnstile widget update <sitekey> --domain <every current domain>,<new root domain>`; the list
+replaces the old one) and pipe the secret, never printed:
+`npx wrangler turnstile widget get <sitekey> --json | jq -r .secret | npx wrangler secret put TURNSTILE_SECRET_KEY --config .aw/wrangler-<env>.jsonc`.
+Past 10 root domains a group gets a second widget (`aw-<group>-2`), added to `TURNSTILE_GROUPS`.
+
 **`forms.choice: "d1_leads"` is the simple form when no CRM is required.** Each verified submission is
 one row in the shared lead database: same-origin `POST /api/leads`, HTTPS-only exact-Origin
 and host checks, a 16 KiB body cap, a per-visitor rate limit (the Workers rate-limiting binding,

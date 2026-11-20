@@ -50,7 +50,8 @@ const fixtureManifest = {
   inventories: { routes: 'recon/urls.txt', media: 'recon/media.csv', redirects: 'public/_redirects', redirectExceptions: [] },
   forms: {
     choice: 'd1_leads',
-    turnstileSiteKeys: { staging: '0x4AAAAAAAexample000000' },
+    turnstileGroup: 'other',
+    turnstileSiteKeys: { staging: '0x4AAAAAAGFvJc24kRMM91rU' },
     leadsDatabases: { staging: { name: 'websites-contact-crm-staging', id: '61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62' } }, // the shared staging DB, never a per-site one
     rateLimiterNamespaceIds: { staging: '4001', production: '4002' },
   },

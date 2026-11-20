@@ -56,6 +56,33 @@ export function sharedLeadsDatabaseError(environment, id) {
     'Bind the shared one; each row records this site in its `site` column.';
 }
 
+/**
+ * ⚠ TURNSTILE WIDGETS ARE SHARED PER GROUP OF SITES, NOT PER SITE (Workers Free: 20 widgets, 10
+ * hostnames each; a root domain covers its subdomains). A d1_leads site names its group in
+ * `forms.turnstileGroup` and uses that group's sitekey for staging AND production; its root domain is
+ * added to the group's widget (`wrangler turnstile widget update <sitekey> --domain <every domain>`).
+ * A group past 10 root domains gets a second widget (aw-<group>-2): add it here, with its sitekey.
+ * Current list and domains: github.com/The-AW/websites-contact-crm README.
+ */
+export const TURNSTILE_GROUPS = {
+  loans: { widget: 'aw-loans', sitekeys: ['0x4AAAAAAGI_5MENUiEK9Iek'] },
+  affiliate: { widget: 'aw-affiliate', sitekeys: ['0x4AAAAAAGD0eg5NV7IMhbc5'] },
+  other: { widget: 'aw-other', sitekeys: ['0x4AAAAAAGFvJc24kRMM91rU'] },
+};
+
+export function turnstileGroupErrors(manifest, environment) {
+  const group = manifest?.forms?.turnstileGroup;
+  const known = Object.keys(TURNSTILE_GROUPS);
+  if (!known.includes(group)) {
+    return [`forms.turnstileGroup must be one of ${known.map((g) => `"${g}"`).join(', ')}: Turnstile widgets are shared per group of sites, never one per site (secured-loan lead-gen = loans, blogs/product recommendations = affiliate, anything else = other).`];
+  }
+  const key = manifest?.forms?.turnstileSiteKeys?.[environment];
+  if (key && !TURNSTILE_GROUPS[group].sitekeys.includes(key)) {
+    return [`forms.turnstileSiteKeys.${environment} must be the ${TURNSTILE_GROUPS[group].widget} sitekey (${TURNSTILE_GROUPS[group].sitekeys.join(' or ')}), the same on staging and production; add this site's root domain to that widget instead of creating a widget.`];
+  }
+  return [];
+}
+
 /** The `site` value written on every lead row: the production hostname, on staging rows too. */
 export function leadsSite(manifest) {
   try { return new URL(manifest?.hosts?.production).hostname.toLowerCase(); } catch { return ''; }
@@ -225,6 +252,7 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       const sharedError = sharedLeadsDatabaseError(environment, db?.id);
       if (sharedError) add(sharedError);
     }
+    for (const error of turnstileGroupErrors(manifest, environment)) add(error);
     if (typeof namespace !== 'string' || !/^[1-9][0-9]{0,15}$/.test(namespace)) {
       add(`forms.rateLimiterNamespaceIds.${environment} must be a positive integer string, unique in the Cloudflare account (Workers rate limiting namespace_id).`);
     }
