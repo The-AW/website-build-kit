@@ -6,6 +6,7 @@
  * refused rather than ignored. Every message a visitor can read is in LEAD_MESSAGES: translate
  * them there (and in LeadForm.astro) and nowhere else.
  */
+import { NO_UTM, type LeadUtm } from './lead-store.ts';
 
 /** The page the form lives on. Stored as the lead's source_url (no query, no fragment). */
 export const CONTACT_PATH = '/contact/';
@@ -43,6 +44,7 @@ export type ValidatedLeadSubmission = {
   message: string;
   turnstileToken: string;
   consent: true;
+  utm: LeadUtm;
 };
 
 export type LeadValidationResult =
@@ -51,7 +53,26 @@ export type LeadValidationResult =
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const PHONE = /^[0-9+().\-\s]*$/;
-const ALLOWED_KEYS = new Set(['name', 'email', 'phone', 'message', 'turnstileToken', 'consent']);
+const ALLOWED_KEYS = new Set(['name', 'email', 'phone', 'message', 'turnstileToken', 'consent', 'utm']);
+const UTM_KEYS = ['source', 'medium', 'campaign', 'term', 'content'] as const;
+const MAX_UTM = 200;
+
+/**
+ * The form's `utm` object ({ source, medium, … } read from the page URL). Lenient on purpose: a
+ * malformed or oversized UTM becomes NULL; it never costs the visitor their lead.
+ */
+export function normaliseUtm(input: unknown): LeadUtm {
+  const utm: LeadUtm = { ...NO_UTM };
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return utm;
+  const record = input as Record<string, unknown>;
+  for (const key of UTM_KEYS) {
+    const value = record[key];
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed && trimmed.length <= MAX_UTM) utm[key] = trimmed;
+  }
+  return utm;
+}
 
 export function validateLeadSubmission(input: unknown): LeadValidationResult {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -93,5 +114,5 @@ export function validateLeadSubmission(input: unknown): LeadValidationResult {
   if (record.consent !== true) errors.consent = LEAD_MESSAGES.consent;
 
   if (Object.keys(errors).length) return { ok: false, errors };
-  return { ok: true, value: { name, email, phone: phoneInput || null, message, turnstileToken: token, consent: true } };
+  return { ok: true, value: { name, email, phone: phoneInput || null, message, turnstileToken: token, consent: true, utm: normaliseUtm(record.utm) } };
 }

@@ -4489,10 +4489,11 @@ gate('refuses without a build to measure', {
 
 const d1Forms = (extra = {}) => ({
   choice: 'd1_leads',
-  turnstileSiteKeys: { staging: '0x4AAAAAAAstaging000000', production: '0x4AAAAAAAproduction0000' },
+  // The group's shared widget (same key both environments) and The-AW's two shared lead databases.
+  turnstileSiteKeys: { staging: '0x4AAAAAAAgroup00000000', production: '0x4AAAAAAAgroup00000000' },
   leadsDatabases: {
-    staging: { name: 'client-leads-staging', id: '11111111-2222-4333-8444-555555555555' },
-    production: { name: 'client-leads', id: '66666666-7777-4888-8999-000000000000' },
+    staging: { name: 'websites-contact-crm-staging', id: '61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62' },
+    production: { name: 'websites-contact-crm-production', id: 'e31827c7-4909-4478-866e-cd538231cd3b' },
   },
   rateLimiterNamespaceIds: { staging: '4001', production: '4002' },
   ...extra,
@@ -4500,7 +4501,6 @@ const d1Forms = (extra = {}) => ({
 const d1Files = (forms = d1Forms()) => ({
   'aw-migration.json': awManifest({ forms }),
   'src/pages/api/leads.ts': "export const prerender = false;\nexport { POST } from '../../lib/lead-route';\n",
-  'migrations/0001_create_leads.sql': '-- schema\n',
 });
 
 describe('check-env, forms.choice d1_leads');
@@ -4510,6 +4510,22 @@ gate('a d1_leads site with the runtime config passes', {
   files: { ...d1Files(), '.aw/wrangler-staging.jsonc': awConfig('staging', true) },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 0,
+});
+
+gate('d1_leads bound to a per-site lead database — must refuse, naming the two-database rule', {
+  script: 'check-env.mjs',
+  files: { ...d1Files(d1Forms({ leadsDatabases: { staging: { name: 'client-leads-staging', id: '11111111-2222-4333-8444-555555555555' } } })), '.aw/wrangler-staging.jsonc': awConfig('staging', true) },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'exactly TWO lead databases for every website',
+});
+
+gate('d1_leads with a per-site leads schema in migrations/ — must refuse', {
+  script: 'check-env.mjs',
+  files: { ...d1Files(), 'migrations/0001_create_leads.sql': '-- schema\n', '.aw/wrangler-staging.jsonc': awConfig('staging', true) },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'per-site leads schema',
 });
 
 gate('d1_leads without the API route — must refuse', {

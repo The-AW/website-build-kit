@@ -27,12 +27,39 @@ export function expectedRoute(target) {
 /**
  * Contact runtimes (Astro server output, /api/* Worker-first):
  *  - `private_crm`: forward to AW's existing private CRM through a site-written adapter.
- *  - `d1_leads`: store each lead in the site's OWN Cloudflare D1 database (binding LEADS_DB,
- *    schema in migrations/). No CRM and no shared secret. The simple default when no CRM is
- *    required. The runtime pieces ship in the template (src/lib/lead-api.ts and friends); the
+ *  - `d1_leads`: store each lead in one of The-AW's TWO SHARED Cloudflare D1 databases (binding
+ *    LEADS_DB; staging builds bind the staging one, production builds the production one), with
+ *    this site's production hostname in the `site` column. The schema is owned by
+ *    github.com/The-AW/websites-contact-crm; a site never creates a database or applies a schema.
+ *    No CRM and no shared secret. The simple default when no CRM is required. The runtime pieces ship in the template (src/lib/lead-api.ts and friends); the
  *    site adds one route file and this manifest block.
  */
 export const CONTACT_RUNTIME_CHOICES = ['private_crm', 'd1_leads'];
+
+/**
+ * ⚠ THE ONLY TWO LEAD DATABASES. Every The-AW site binds these; NEVER create a D1 database per
+ * site. The account is on Workers Free (10 D1 databases) and per-site lead databases used all 10
+ * on 2026-11-20 with 10–20 sites still to migrate. Rows carry `site` (the production hostname), so
+ * one table serves every site. Schema, inbox and 730-day retention: github.com/The-AW/websites-contact-crm.
+ */
+export const SHARED_LEADS_DATABASES = {
+  staging: { name: 'websites-contact-crm-staging', id: '61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62' },
+  production: { name: 'websites-contact-crm-production', id: 'e31827c7-4909-4478-866e-cd538231cd3b' },
+};
+
+export function sharedLeadsDatabaseError(environment, id) {
+  const shared = SHARED_LEADS_DATABASES[environment];
+  if (!shared || id === shared.id) return null;
+  return `forms.leadsDatabases.${environment} is ${id || 'missing'}, but it must be the shared ${environment} lead database ` +
+    `${shared.name} (${shared.id}). The-AW has exactly TWO lead databases for every website (staging and production); ` +
+    'never create one per site: the Workers Free plan allows 10 D1 databases and per-site ones used them all up on 2026-11-20. ' +
+    'Bind the shared one; each row records this site in its `site` column.';
+}
+
+/** The `site` value written on every lead row: the production hostname, on staging rows too. */
+export function leadsSite(manifest) {
+  try { return new URL(manifest?.hosts?.production).hostname.toLowerCase(); } catch { return ''; }
+}
 export const contactRuntime = (manifest) => CONTACT_RUNTIME_CHOICES.includes(manifest?.forms?.choice);
 
 /** The two-line route that enables d1_leads (src/lib/lead-route.ts holds the handler). The prerender line is
@@ -183,7 +210,8 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
     else if (!/lead-route|handleLeadPost\s*\(/.test(readFileSync(route, 'utf8'))) {
       add('The /api/leads route must use the kit handler (src/lib/lead-route.ts or handleLeadPost) for forms.choice d1_leads; a hand-written route skips the origin, rate-limit and Turnstile checks.');
     }
-    if (!existsSync(join(cwd, 'migrations'))) add('forms.choice d1_leads needs the leads schema in migrations/.');
+    if (existsSync(join(cwd, 'migrations', '0001_create_leads.sql'))) add('migrations/0001_create_leads.sql is a per-site leads schema; delete it. The shared lead databases\' schema is owned by github.com/The-AW/websites-contact-crm, and a site never applies one.');
+    if (!leadsSite(manifest)) add('hosts.production must be a URL: its hostname is the `site` value on every lead row.');
     const siteKey = manifest?.forms?.turnstileSiteKeys?.[environment];
     const db = manifest?.forms?.leadsDatabases?.[environment];
     const namespace = manifest?.forms?.rateLimiterNamespaceIds?.[environment];
@@ -192,6 +220,10 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
       if (!db || typeof db.name !== 'string' || !db.name.trim() || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(db.id ?? '')) {
         add(`forms.leadsDatabases.${environment} must name the D1 database (name and id) that stores this environment's leads.`);
       }
+    }
+    if (db?.id !== undefined || leadsEnabledFor(manifest, environment)) {
+      const sharedError = sharedLeadsDatabaseError(environment, db?.id);
+      if (sharedError) add(sharedError);
     }
     if (typeof namespace !== 'string' || !/^[1-9][0-9]{0,15}$/.test(namespace)) {
       add(`forms.rateLimiterNamespaceIds.${environment} must be a positive integer string, unique in the Cloudflare account (Workers rate limiting namespace_id).`);
@@ -205,10 +237,10 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
     }
     if (manifest?.forms?.productionEnabled === true) {
       for (const error of acceptanceErrors(manifest)) add(error);
-      const keys = manifest?.forms?.turnstileSiteKeys ?? {};
-      if (keys.production && keys.production === keys.staging) add('forms.turnstileSiteKeys.production must be its own widget, not the staging site key.');
+      // Staging and production deliberately share the group's Turnstile widget (aw-loans /
+      // aw-affiliate / aw-other); the Worker's exact Siteverify hostname check keeps them apart.
       const dbs = manifest?.forms?.leadsDatabases ?? {};
-      if (dbs.production?.id && dbs.production.id === dbs.staging?.id) add('forms.leadsDatabases.production must be its own D1 database, not the staging one.');
+      if (dbs.production?.id && dbs.production.id === dbs.staging?.id) add('forms.leadsDatabases.production must be the shared production database, not the staging one.');
     }
   }
 
@@ -416,11 +448,14 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
       LEADS_ENABLED: leadsEnabledFor(manifest, environment) ? 'true' : 'false',
       LEADS_ALLOWED_ORIGINS: result.siteUrl,
       TURNSTILE_ALLOWED_HOSTNAME: result.hostname,
+      // The site this Worker writes on every lead row; never taken from form input.
+      LEADS_SITE: leadsSite(manifest),
     };
-    // This environment's own leads database (migrations/ holds the schema). Secrets are never here.
+    // The SHARED lead database for this environment. No migrations_dir: the schema belongs to
+    // github.com/The-AW/websites-contact-crm, never to a site. Secrets are never here.
     const leadsDb = manifest.forms.leadsDatabases?.[environment];
     if (leadsDb?.id) {
-      config.d1_databases = [{ binding: 'LEADS_DB', database_name: leadsDb.name, database_id: leadsDb.id, migrations_dir: '../migrations' }];
+      config.d1_databases = [{ binding: 'LEADS_DB', database_name: leadsDb.name, database_id: leadsDb.id }];
     }
     config.ratelimits = [{ name: 'LEADS_RATE_LIMITER', namespace_id: manifest.forms.rateLimiterNamespaceIds[environment], simple: { limit: 10, period: 60 } }];
   }
@@ -497,6 +532,14 @@ export function validateWranglerDeployConfig(config, target, { requireWorkerEntr
     const leadsDb = (config.d1_databases ?? []).find((d) => d?.binding === 'LEADS_DB');
     if (target.leadsEnabled && (!leadsDb || typeof leadsDb.database_id !== 'string' || !leadsDb.database_id)) {
       errors.push('d1_leads with LEADS_ENABLED needs a LEADS_DB D1 binding for this environment.');
+    }
+    if (leadsDb) {
+      const sharedError = sharedLeadsDatabaseError(target.environment, leadsDb.database_id);
+      if (sharedError) errors.push(sharedError);
+      if ('migrations_dir' in leadsDb) errors.push('LEADS_DB must not carry migrations_dir: the shared lead schema is applied only from github.com/The-AW/websites-contact-crm.');
+    }
+    if (typeof vars.LEADS_SITE !== 'string' || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(vars.LEADS_SITE)) {
+      errors.push('vars.LEADS_SITE must be the site\'s production hostname (written on every lead row).');
     }
     const limits = config.ratelimits ?? [];
     if (limits.length !== 1 || limits[0]?.name !== 'LEADS_RATE_LIMITER' || limits[0]?.simple?.limit !== 10 ||

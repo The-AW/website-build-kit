@@ -68,7 +68,7 @@ Missing them is what stalls a build on day one.
 | **Who owns each account** | GA4, Search Console, the registrar, the booking tool. An unreachable previous agency is a this-week problem, not a launch-day one |
 | **Brand assets** | Logo light *and* dark, a vector favicon, brand hexes. Look at them — supplied "favicons" are frequently a different logo entirely |
 | **Business facts** | Name, phone, address, hours, service areas, credentials, founding year |
-| **Forms choice** | Record `none`, `d1_leads` (own D1 table, no CRM) or `private_crm` in `aw-migration.json`; no form or notification transport is required for a static release |
+| **Forms choice** | Record `none`, `d1_leads` (shared lead database, never one per site; no CRM) or `private_crm` in `aw-migration.json`; no form or notification transport is required for a static release |
 | **What counts as a win** | Phone call, form, booking, demo. **One.** It settles every layout argument later, and picks the archetype |
 | **Where their customers are** | Country, and any state or province. Decides which accessibility and privacy law binds them |
 

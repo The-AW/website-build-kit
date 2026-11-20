@@ -105,20 +105,34 @@ Free cap, and serves old URLs through `src/legacy-worker.ts` (`not_found_handlin
 unknown URL is still a real 404). `build.md` §5b has the steps and `npm run test:legacy-media`
 proves the Worker. Upload filenames are cached immutable for a year, so a replaced image gets a new name.
 
+⚠ **TWO LEAD DATABASES FOR THE WHOLE COMPANY. NEVER CREATE ONE PER SITE.** Every The-AW site's
+contact leads go into `websites-contact-crm-staging` (`61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62`) from staging
+builds and `websites-contact-crm-production` (`e31827c7-4909-4478-866e-cd538231cd3b`) from production builds.
+Each row carries `site` (the production hostname, set by the build as `LEADS_SITE`) and the page's UTMs. The
+account is on Workers Free (10 D1 databases); per-site lead databases used all 10 on 2026-11-20. The schema,
+the private inbox and the 2-year retention job belong to github.com/The-AW/websites-contact-crm (its
+`docs/site-contract.md` is the contract); a site never runs `wrangler d1 create` or `d1 migrations apply` for
+leads, and the build refuses any other `LEADS_DB` id. **Turnstile widgets are shared per group of sites, not
+per site:** `aw-loans` (secured-loan lead-gen), `aw-affiliate` (blogs / product recommendations), `aw-other`
+(agency site and the rest), each with up to 10 root domains (a root domain covers its `staging.` subdomain).
+Use the group's sitekey for staging and production; the Worker's exact Siteverify `hostname` check is what
+keeps one site's token from being accepted by another, so never loosen it.
+
 **`forms.choice: "d1_leads"` is the simple form when no CRM is required.** Each verified submission is
-one row in the site's own Cloudflare D1 database: same-origin `POST /api/leads`, HTTPS-only exact-Origin
+one row in the shared lead database: same-origin `POST /api/leads`, HTTPS-only exact-Origin
 and host checks, a 16 KiB body cap, a per-visitor rate limit (the Workers rate-limiting binding,
 `LEADS_RATE_LIMITER`, keyed by an HMAC of the IP), field validation and explicit consent, Turnstile
 Siteverify (hostname and action checked), then one parameterised INSERT. No CRM, no shared secret. It ships
 in the template: `src/lib/lead-api.ts` (handler), `lead-submission.ts` (fields and every visitor-facing
-message), `lead-store.ts`, `src/components/LeadForm.astro`, `migrations/0001_create_leads.sql`. A site adds
+message), `lead-store.ts`, `src/components/LeadForm.astro` (no `migrations/`: the schema is the CRM repo's). A site adds
 a two-line API route file (leads.ts in the api pages folder; the validator prints it if missing) and the `forms` block in
-`aw-migration.json` (Turnstile site key, D1 name + id and rate-limiter namespace per environment). Production
+`aw-migration.json` (the group's Turnstile site key, the two shared database names + ids and a rate-limiter namespace per environment). Production
 stays **closed** (`LEADS_ENABLED=false`) until `forms.productionEnabled` is true with a recorded
 `productionAcceptance`. Read leads with `npm run leads:staging` / `leads:production`: personal data is
-**masked** unless you pass `--reveal`. `docs/aw-migration-process.md` §Contact has the setup order; delivery
-of rows by email or Slack is a separate, later step, and there is **no retention job**, so do not publish a
-retention period until one exists (`stacks.md` retention table). `npm run test:form`, `test:leads` and
+**masked** unless you pass `--reveal`, and only this site's rows (`site` = production hostname); all sites
+together are in the CRM inbox (`/admin/` on the websites-contact-crm Worker, Cloudflare Access). `docs/aw-migration-process.md` §Contact has the setup order; delivery
+of rows by email or Slack is a separate, later step. Retention is the CRM's daily job: rows older than
+730 days (2 years) are deleted. `npm run test:form`, `test:leads` and
 `test:leads-worker` prove it; the last builds the template with the choice on and runs the Worker.
 
 **Launch checks that exist because they failed silently.** `npm run verify` fails when `http://` on the production

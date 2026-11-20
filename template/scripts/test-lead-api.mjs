@@ -24,6 +24,7 @@ function world({ enabled = 'true', limiter = true, siteverify = { success: true,
     TURNSTILE_ALLOWED_HOSTNAME: 'www.example.org',
     TURNSTILE_SECRET_KEY: 'secret',
     LEADS_RATE_LIMIT_HMAC_SECRET: SECRET,
+    LEADS_SITE: 'example.org',
     LEADS_RATE_LIMITER: limiter === false ? undefined : { async limit(o) { w.limitCalls.push(o.key); return { success: limiter === true }; } },
     LEADS_DB: {
       prepare: () => ({ bind: (...values) => ({ async run() { if (dbFails) throw new Error('boom'); w.rows.push(values); return {}; } }) }),
@@ -53,7 +54,8 @@ test('a valid, verified submission stores exactly one row with status new', asyn
   assert.equal(status, 200);
   assert.equal(body.ok, true);
   assert.equal(w.rows.length, 1);
-  assert.equal(w.rows[0][1], '2026-11-17T10:00:00.000Z');
+  assert.equal(w.rows[0][13], '2026-11-17T10:00:00.000Z');
+  assert.equal(w.rows[0][1], 'example.org', 'site is LEADS_SITE, never form input');
   assert.equal(w.rows[0][6], 'https://www.example.org/contact/', 'source_url is the form page on the request origin');
   assert.equal(w.siteverifyCalls.length, 1);
   assert.match(w.siteverifyCalls[0].body, /remoteip=203\.0\.113\.7/, 'the IP goes to Siteverify only');
@@ -208,5 +210,41 @@ test('every response is JSON, uncacheable and nosniff', async () => {
     assert.match(res.headers.get('content-type'), /application\/json/);
     assert.equal(res.headers.get('cache-control'), 'no-store');
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  }
+});
+
+test('UTMs reach the row; a site value in the form body is refused, not trusted', async () => {
+  const w = world();
+  const r = await read(await post(w, { body: { ...GOOD, utm: { source: 'google', campaign: 'synthetic' } } }));
+  assert.equal(r.status, 200);
+  assert.deepEqual(w.rows[0].slice(7, 12), ['google', null, 'synthetic', null, null]);
+  const forged = world();
+  const f = await read(await post(forged, { body: { ...GOOD, site: 'other.example' } }));
+  assert.equal(f.status, 400);
+  refused(forged);
+});
+
+test('shared group widget: a token Siteverify issued for another site of the group is refused', async () => {
+  const w = world({ siteverify: { success: true, hostname: 'other-site-in-group.example', action: 'contact' } });
+  const r = await read(await post(w));
+  assert.equal(r.status, 403);
+  assert.equal(r.body.error, LEAD_MESSAGES.challengeInvalid);
+  refused(w);
+});
+
+test('no LEADS_SITE: the verified lead is not stored and the failure is logged without the submission', async () => {
+  const w = world();
+  delete w.env.LEADS_SITE;
+  const original = console.warn;
+  const logs = [];
+  console.warn = (line) => logs.push(String(line));
+  try {
+    const r = await read(await post(w));
+    assert.equal(r.status, 500);
+    refused(w);
+    assert.match(logs.join(' '), /LEADS_SITE is missing/);
+    assert.doesNotMatch(logs.join(' '), /test@example\.invalid/);
+  } finally {
+    console.warn = original;
   }
 });
