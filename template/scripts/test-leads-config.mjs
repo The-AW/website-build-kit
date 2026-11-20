@@ -32,7 +32,8 @@ const manifest = (forms = {}) => ({
   forms: {
     choice: 'd1_leads',
     // One group widget for staging and production (aw-loans / aw-affiliate / aw-other).
-    turnstileSiteKeys: { staging: '0x4AAAAAAAgroup00000000', production: '0x4AAAAAAAgroup00000000' },
+    turnstileGroup: 'loans',
+    turnstileSiteKeys: { staging: '0x4AAAAAAGI_5MENUiEK9Iek', production: '0x4AAAAAAGI_5MENUiEK9Iek' },
     leadsDatabases: { staging: DB('staging'), production: DB('production') },
     rateLimiterNamespaceIds: { staging: '4001', production: '4002' },
     ...forms,
@@ -102,6 +103,17 @@ test('a per-site lead database is refused with the rule spelled out, in either e
   assert.match(errors(manifest({ leadsDatabases: { staging: DB('production'), production: DB('production') } }), 'staging'), /must be the shared staging lead database/, 'crossed ids are refused');
 });
 
+test('Turnstile is per group: a site needs forms.turnstileGroup and that group\'s sitekey', () => {
+  site();
+  const noGroup = manifest();
+  delete noGroup.forms.turnstileGroup;
+  assert.match(errors(noGroup), /forms\.turnstileGroup must be one of "loans", "affiliate", "other"/);
+  assert.match(errors(manifest({ turnstileGroup: 'mysite' })), /forms\.turnstileGroup must be one of/);
+  assert.match(errors(manifest({ turnstileSiteKeys: { staging: '0x4AAAAAAAownwidget0000', production: '0x4AAAAAAGI_5MENUiEK9Iek' } })), /must be the aw-loans sitekey/);
+  assert.match(errors(manifest({ turnstileGroup: 'affiliate' })), /must be the aw-affiliate sitekey \(0x4AAAAAAGD0eg5NV7IMhbc5\)/);
+  assert.equal(errors(manifest({ turnstileGroup: 'affiliate', turnstileSiteKeys: { staging: '0x4AAAAAAGD0eg5NV7IMhbc5', production: '0x4AAAAAAGD0eg5NV7IMhbc5' } })), '');
+});
+
 test('opening production needs the acceptance record and the shared production database', () => {
   site();
   const open = (extra = {}) => manifest({ productionEnabled: true, productionAcceptance: { stagingSubmissionVerified: true, testRecordDeleted: true, acceptedOn: '2026-11-17', acceptedBy: 'Site Owner' }, ...extra });
@@ -109,7 +121,7 @@ test('opening production needs the acceptance record and the shared production d
   assert.match(errors(manifest({ productionEnabled: true }), 'production'), /productionAcceptance is missing/);
   assert.match(errors(open({ productionAcceptance: { stagingSubmissionVerified: false, testRecordDeleted: true, acceptedOn: '2026-11-17', acceptedBy: 'x' } }), 'production'), /stagingSubmissionVerified must be true/);
   assert.match(errors(open({ productionAcceptance: { stagingSubmissionVerified: true, testRecordDeleted: false, acceptedOn: '17/11/2026', acceptedBy: '' } }), 'production'), /testRecordDeleted must be true.*acceptedOn must be the ISO date.*acceptedBy must name/);
-  assert.equal(errors(open({ turnstileSiteKeys: { staging: 'same', production: 'same' } }), 'production'), '', 'the group widget serves both environments');
+  assert.equal(errors(open(), 'production'), '', 'the group widget serves both environments');
   assert.match(errors(open({ leadsDatabases: { staging: DB('staging'), production: DB('staging') } }), 'production'), /must be the shared production database/);
   assert.match(errors(open({ productionEnabled: 'yes' }), 'production'), /productionEnabled must be a boolean/);
 });

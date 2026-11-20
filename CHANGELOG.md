@@ -1,6 +1,13 @@
 # Changelog
 
-## 2026-11-20 — Two shared lead databases for every site; Turnstile widgets per group
+## 2026-11-20 — 0.1.24: two shared lead databases for every site; Turnstile widgets per group
+
+Released as 0.1.24 (`create/package.json`), so a site scaffolded from here is stamped with a version that
+includes the shared-database flow; it also releases the 2026-11-17 launch-check entries below.
+
+* **Group Turnstile keys are in the kit**: `TURNSTILE_GROUPS` (`aw-loans`, `aw-affiliate`, `aw-other` with their
+  sitekeys) and the table in the template `CLAUDE.md`. A `d1_leads` site must set `forms.turnstileGroup` and use that
+  group's sitekey on staging and production; a site's own widget is refused (`test:leads`, `test:gates`).
 
 * **`d1_leads` binds The-AW's two shared lead databases**, `websites-contact-crm-staging`
   (`61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62`) and `websites-contact-crm-production`
