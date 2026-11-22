@@ -132,15 +132,14 @@ function acceptanceErrors(manifest) {
 /**
  * media.legacyUploads (build.md §5b): a migrated WordPress site whose pages use old
  * `/wp-content/uploads/` URLs. The build stages the uploads that pages use, deploys each
- * as one WebP, and the Worker answers the old URLs (`not_found_handling: "none"` plus an
- * asset-miss handler). Off by default: every other site keeps `404-page` and no Worker.
+ * as one WebP, and the old URLs are answered by static `_redirects` rules written by
+ * scripts/legacy-redirects.mjs. Since 0.1.25 (2026-11-22 Worker-cost fix, first on 123achei): this used to be
+ * `not_found_handling: "none"` plus a Worker asset-miss handler, which ran the Worker for every
+ * crawler 404. Every site now keeps `404-page`.
  */
 export const usesLegacyUploads = (manifest) => manifest?.media?.legacyUploads === true;
-/** Worker entry for a static site with legacy uploads; a site that also runs the contact API owns src/worker.ts. */
-export const LEGACY_WORKER_ENTRY = 'src/legacy-worker.ts';
+/** The site-owned Worker entry (forms.runtime "site-worker"): it answers /api/* and nothing else. */
 export const SITE_WORKER_ENTRY = 'src/worker.ts';
-export const legacyWorkerEntry = (cwd = process.cwd()) =>
-  existsSync(resolve(cwd, SITE_WORKER_ENTRY)) ? SITE_WORKER_ENTRY : LEGACY_WORKER_ENTRY;
 
 export function readMigrationManifest(cwd = process.cwd()) {
   const path = join(cwd, MANIFEST_FILE);
@@ -274,16 +273,11 @@ export function validateMigrationManifest(manifest, environment, { phase = 'buil
 
   const legacy = manifest?.media?.legacyUploads;
   if (legacy !== undefined && typeof legacy !== 'boolean') add('media.legacyUploads must be true or false.');
-  if (legacy === true) {
-    if (!existsSync(join(cwd, LEGACY_WORKER_ENTRY)) && !existsSync(join(cwd, SITE_WORKER_ENTRY))) {
-      add(`media.legacyUploads is true but neither ${LEGACY_WORKER_ENTRY} nor ${SITE_WORKER_ENTRY} exists: with not_found_handling "none" something must answer an unknown URL.`);
-    }
-    // The contact runtime is Astro's own Worker; the asset-miss handler has to be wrapped around it by the site.
-    if (CONTACT_RUNTIME_CHOICES.includes(choice)) {
-      const entry = join(cwd, SITE_WORKER_ENTRY);
-      if (!existsSync(entry)) add(`media.legacyUploads with a contact runtime (forms.choice private_crm or d1_leads) needs a site-owned ${SITE_WORKER_ENTRY} that calls legacyRedirect() before Astro's handler (build.md §5b).`);
-      else if (!/legacyRedirect\s*\(/.test(readFileSync(entry, 'utf8'))) add(`${SITE_WORKER_ENTRY} must call legacyRedirect() (src/lib/legacy-uploads.ts); without it every old upload URL is a 404.`);
-    }
+  if (legacy === true && CONTACT_RUNTIME_CHOICES.includes(choice) && !existsSync(join(cwd, SITE_WORKER_ENTRY))) {
+    // Old upload and attachment URLs are static `_redirects` rules now (scripts/legacy-redirects.mjs,
+    // 2026-11-22 Worker-cost fix, ported 2026-11-23 by decision 68); the Worker only answers /api/*,
+    // but a contact runtime still needs one.
+    add(`media.legacyUploads with a contact runtime (forms.choice private_crm or d1_leads) needs a site-owned ${SITE_WORKER_ENTRY} for /api/*.`);
   }
   if (choice === 'private_crm') {
     const leadsRoute = join(cwd, 'src/pages/api/leads.ts');
@@ -461,9 +455,14 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
       directory: assetsDirectory,
       ...(runtimeEnabled
         ? { binding: 'ASSETS', run_worker_first: ['/api/*'] }
-        : legacy ? { binding: 'ASSETS' } : {}),
-      // "none" only with the asset-miss handler (src/lib/legacy-uploads.ts), which serves the real 404.
-      not_found_handling: legacy ? 'none' : '404-page',
+        : {}),
+      // Always "404-page", legacy uploads included (kit 0.1.25; 2026-11-22 Worker-cost fix from 123achei,
+      // 2026-11-23 by owner decision 68). With "none" every asset miss ran the Worker; crawlers and
+      // scanners on dead URLs took the account over the Workers Free daily limit. Old upload and
+      // attachment URLs are static `_redirects` rules (scripts/legacy-redirects.mjs). With
+      // run_worker_first as a list, Cloudflare applies not_found_handling to EVERY miss, not only
+      // `Sec-Fetch-Mode: navigate` ones, so only /api/* runs the Worker.
+      not_found_handling: '404-page',
       html_handling: 'auto-trailing-slash',
     },
     observability: { enabled: true },
@@ -492,7 +491,9 @@ export function createWranglerConfig(manifest, environment, cwd = process.cwd())
     config.vars = { LEADS_ENABLED: leadsEnabledFor(manifest, environment) ? 'true' : 'false' };
   }
   // Relative to the generated file in .aw/.
-  if (legacy) config.main = `../${legacyWorkerEntry(cwd)}`;
+  // A Worker only where something must run: the site-owned /api/* handler. A legacy-uploads site
+  // without forms is assets-only (no main), so no request can run a Worker at all.
+  if (legacy && runtimeEnabled) config.main = `../${SITE_WORKER_ENTRY}`;
   return config;
 }
 
@@ -519,13 +520,18 @@ export function validateWranglerDeployConfig(config, target, { requireWorkerEntr
   if (config.preview_urls !== false) {
     errors.push('preview_urls must be false so the Worker is not exposed on an alternate preview hostname.');
   }
-  if (target.legacyUploads) {
-    const assets = config.assets ?? {};
-    if (assets.binding !== 'ASSETS') errors.push('assets.binding must be ASSETS so the asset-miss handler can serve the 404 page and probe deployed uploads.');
-    if (assets.not_found_handling !== 'none') errors.push('media.legacyUploads needs assets.not_found_handling "none": the Worker answers old upload and attachment URLs, and serves the real 404 itself.');
-    if (typeof config.main !== 'string' || !config.main.trim()) errors.push('media.legacyUploads needs a Worker entrypoint (main): src/legacy-worker.ts, or a site-owned src/worker.ts.');
-  } else if (config.assets?.not_found_handling !== '404-page') {
-    errors.push('assets.not_found_handling must be 404-page to preserve a real static 404 response.');
+  if (config.assets?.not_found_handling !== '404-page') {
+    // Legacy uploads included: "none" sends every asset miss (crawler 404s) to the Worker, which
+    // took the account over the Workers Free daily limit on 2026-11-22.
+    errors.push('assets.not_found_handling must be 404-page: a real static 404, and an asset miss never runs the Worker.');
+  }
+  if (typeof config.main === 'string' && config.main.trim()) {
+    // With a Worker script, only a run_worker_first LIST makes Cloudflare apply not_found_handling to
+    // non-navigation misses (crawlers); without it every crawler 404 runs the Worker again.
+    const first = config.assets?.run_worker_first;
+    if (!Array.isArray(first) || first.length !== 1 || first[0] !== '/api/*') {
+      errors.push('A Worker entrypoint needs assets.run_worker_first exactly ["/api/*"], or every crawler 404 runs the Worker.');
+    }
   }
   if (target.runtimeEnabled) {
     const assets = config.assets ?? {};

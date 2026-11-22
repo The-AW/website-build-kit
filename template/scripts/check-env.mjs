@@ -47,12 +47,16 @@ if (config.workers_dev !== false) {
 if (config.preview_urls !== false) {
   fail(`${configPath} must set preview_urls: false to prevent alternate preview hostnames.`);
 }
-if (target.legacyUploads) {
-  if (config.assets?.not_found_handling !== 'none' || config.assets?.binding !== 'ASSETS' || typeof config.main !== 'string' || !config.main.trim()) {
-    fail(`${configPath} must pair not_found_handling: none with the ASSETS binding and a Worker entrypoint (main) when media.legacyUploads is true; the Worker serves the real 404.`);
+// Legacy uploads included (2026-11-22 Worker-cost fix): old URLs are static _redirects rules, and
+// "none" would send every crawler 404 to the Worker.
+if (config.assets?.not_found_handling !== '404-page') {
+  fail(`${configPath} must preserve a real 404 with not_found_handling: 404-page (an asset miss must never run the Worker).`);
+}
+if (typeof config.main === 'string' && config.main.trim()) {
+  const first = config.assets?.run_worker_first;
+  if (!Array.isArray(first) || first.length !== 1 || first[0] !== '/api/*') {
+    fail(`${configPath} has a Worker entrypoint but run_worker_first is not ["/api/*"]: without the list, every crawler 404 runs the Worker.`);
   }
-} else if (config.assets?.not_found_handling !== '404-page') {
-  fail(`${configPath} must preserve a real 404 with not_found_handling: 404-page.`);
 }
 if (contactRuntime(manifest)) {
   if (config.assets?.binding !== 'ASSETS') {

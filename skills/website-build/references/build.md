@@ -443,25 +443,29 @@ Free disk: set `LEGACY_MEDIA_MIN_FREE_GB` (default 3) for the floor and
 `LEGACY_MEDIA_ALLOW_MISSING=1` downgrades a missing original to a warning while downloads
 continue — never for a production build.
 
-**The Worker.** The flag is also a supported Worker option. With it on, the generated config
-is `assets.not_found_handling: "none"` + `assets.binding: "ASSETS"` + a `main` entry, and
-Cloudflare invokes the Worker **only for a request that matches no deployed file**
-(`src/legacy-worker.ts` → `src/lib/legacy-uploads.ts`): an old `.png`/`.jpg`/`-WxH`/`-scaled`
-URL gets one 301 to the WebP (`src/lib/upload-fallback.ts`, which asks the assets binding what
-is deployed, so there is no list to keep); an old attachment page `/<image-slug>/` gets a 301
-to its parent post from `src/data/attachment-redirects.json` (`{ "/slug/": "/target/" }`, built
-by the site's importer); **everything else is the prerendered 404 page with a 404 status**.
-Without the flag the config stays `404-page` and there is no Worker; the validator, `check-env`
-and `deploy-aw` refuse a config that disagrees with the flag in either direction.
+**No Worker for old URLs (0.1.25).** Old URLs are answered by the asset layer, never by a
+Worker: after the uploads are linked, `scripts/legacy-redirects.mjs` (a build step) appends
+static `_redirects` rules to the deployed `_redirects` — every attachment page in
+`src/data/attachment-redirects.json` (`{ "/slug/": "/target/" }`, built by the site's importer)
+→ its parent, and every old upload URL the recon knows (`recon/wp-json` sizes, `recon/html`
+references) → the deployed WebP that `src/lib/upload-fallback.ts` picks (`.png`/`.jpg` → `.webp`,
+`-WxH`/`-scaled` → the hosted original). It fails the build when a source is a deployed file, a
+target is not deployed, or the file would pass Cloudflare's **2,000 static rules**. Every other
+URL is the prerendered 404 (`assets.not_found_handling: "404-page"`). A legacy site with no
+contact runtime therefore has **no Worker at all**; one with forms has its `/api/*` Worker only.
 
-⚠ `"none"` removes Cloudflare's own 404 handling, so a bug in the handler does not look like an
-error: it looks like a 200 with the 404 page's body, which search engines index. That is why
-`npm run test:legacy-media` runs the generated Worker under `wrangler dev --local` and asserts
-the **status** of an unknown page, an unknown upload, a variant of an unknown upload and a
-`HEAD`. A site that also runs the contact API (`forms.choice: "private_crm"`) owns
-`src/worker.ts` and calls `legacyRedirect(request, env.ASSETS)` from `src/lib/legacy-uploads.ts`
-before Astro's handler; the generated config uses `src/worker.ts` when it exists, and the
-validator refuses it if it never calls `legacyRedirect`.
+⚠ **Why: Workers Free is 100,000 Worker requests a day for the whole ACCOUNT.** Until 0.1.24 the
+flag generated `not_found_handling: "none"` + an asset-miss Worker (`src/legacy-worker.ts`), so
+every 404 ran a Worker. On 2026-11-22 one site's crawler 404s (~90k, Applebot on a dead
+directory's URLs) took the account over the limit, and from then on every Worker path of every
+site answered 429 (Error 1027) — the lead forms included. Two facts make the new config hold:
+with a Worker script, Cloudflare sends a miss that is not a `Sec-Fetch-Mode: navigate` request
+(every crawler and scanner) to the Worker **unless `run_worker_first` is a list**; with a list,
+`not_found_handling` applies to every miss. So the validator, `check-env` and `deploy-aw` refuse
+`not_found_handling` other than `"404-page"`, and refuse a `main` entry whose
+`run_worker_first` is not exactly `["/api/*"]` (a boolean `true` runs the Worker on every
+request). Never answer page views with a Worker either (e.g. request-time dates): resolve them
+at build time and rebuild on a schedule.
 
 *Gate (migration): used-media bytes before/after recorded; no deployed raster over 200 KB
 without a written reason; `npm run check:file-count` under the plan's cap with headroom; old

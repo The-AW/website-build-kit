@@ -4266,53 +4266,119 @@ gate('a comments-only file is not a failure', {
 
 const STRIP_TYPES = { NODE_OPTIONS: '--experimental-strip-types --no-warnings' };
 const legacyManifest = (flag = true) => awManifest({ media: { legacyUploads: flag } });
+/* Since 0.1.25 (Worker-cost fix, 2026-11-23): legacy uploads keep `not_found_handling: "404-page"`;
+   the old URLs are static `_redirects` rules (legacy-redirects.mjs), and a legacy site without a
+   contact runtime has NO Worker at all. On Workers Free (100k Worker requests a day for the whole
+   account) "none" sent every crawler/scanner 404 to the Worker; one site's dead URLs took the account
+   over the limit on 2026-11-22 and every lead form answered 429. */
 const legacyConfig = (env, over = {}) => {
   const base = JSON.parse(awConfig(env, false));
-  return JSON.stringify({ ...base, main: '../src/legacy-worker.ts', assets: { ...base.assets, binding: 'ASSETS', not_found_handling: 'none' }, ...over });
+  return JSON.stringify({ ...base, ...over, assets: { ...base.assets, ...(over.assets ?? {}) } });
 };
 
 describe('check-env, media.legacyUploads');
 
-gate('flag on: not_found none + ASSETS + Worker entrypoint passes', {
+gate('flag on: assets only, not_found 404-page, no Worker entrypoint passes', {
   script: 'check-env.mjs',
-  files: { 'aw-migration.json': legacyManifest(), 'src/legacy-worker.ts': '', '.aw/wrangler-staging.jsonc': legacyConfig('staging') },
+  files: { 'aw-migration.json': legacyManifest(), '.aw/wrangler-staging.jsonc': legacyConfig('staging') },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 0,
 });
 
-gate('flag on but the config still says 404-page — must refuse', {
+gate('flag on but the config says not_found none — must refuse (every crawler 404 would run the Worker)', {
   script: 'check-env.mjs',
   files: {
-    'aw-migration.json': legacyManifest(), 'src/legacy-worker.ts': '',
-    '.aw/wrangler-staging.jsonc': legacyConfig('staging', { assets: { directory: '/tmp/dist', binding: 'ASSETS', not_found_handling: '404-page' } }),
+    'aw-migration.json': legacyManifest(),
+    '.aw/wrangler-staging.jsonc': legacyConfig('staging', { main: '../src/worker.ts', assets: { binding: 'ASSETS', not_found_handling: 'none' } }),
   },
-  env: { PUBLIC_SITE_ENV: 'staging' },
-  expect: 1,
-  contains: 'not_found_handling: none',
-});
-
-gate('flag on with no Worker entrypoint in the config — must refuse', {
-  script: 'check-env.mjs',
-  files: { 'aw-migration.json': legacyManifest(), 'src/legacy-worker.ts': '', '.aw/wrangler-staging.jsonc': legacyConfig('staging', { main: undefined }) },
-  env: { PUBLIC_SITE_ENV: 'staging' },
-  expect: 1,
-  contains: 'Worker entrypoint',
-});
-
-gate('flag off but the config says not_found none — must refuse (a real 404 needs a Worker that serves it)', {
-  script: 'check-env.mjs',
-  files: { 'aw-migration.json': legacyManifest(false), '.aw/wrangler-staging.jsonc': legacyConfig('staging') },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 1,
   contains: 'real 404 with not_found_handling: 404-page',
 });
 
-gate('flag on with no Worker source file at all — must refuse', {
+gate('flag off but the config says not_found none — must refuse', {
   script: 'check-env.mjs',
-  files: { 'aw-migration.json': legacyManifest(), '.aw/wrangler-staging.jsonc': legacyConfig('staging') },
+  files: { 'aw-migration.json': legacyManifest(false), '.aw/wrangler-staging.jsonc': legacyConfig('staging', { assets: { not_found_handling: 'none' } }) },
   env: { PUBLIC_SITE_ENV: 'staging' },
   expect: 1,
-  contains: 'neither src/legacy-worker.ts nor src/worker.ts exists',
+  contains: 'real 404 with not_found_handling: 404-page',
+});
+
+gate('a Worker entrypoint without run_worker_first ["/api/*"] — must refuse (non-navigation misses would run it)', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': legacyManifest(),
+    '.aw/wrangler-staging.jsonc': legacyConfig('staging', { main: '../src/worker.ts', assets: { binding: 'ASSETS' } }),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'run_worker_first is not ["/api/*"]',
+});
+
+gate('a Worker entrypoint with run_worker_first true — must refuse (every request would run it)', {
+  script: 'check-env.mjs',
+  files: {
+    'aw-migration.json': legacyManifest(),
+    '.aw/wrangler-staging.jsonc': legacyConfig('staging', { main: '../src/worker.ts', assets: { binding: 'ASSETS', run_worker_first: true } }),
+  },
+  env: { PUBLIC_SITE_ENV: 'staging' },
+  expect: 1,
+  contains: 'run_worker_first is not ["/api/*"]',
+});
+
+describe('legacy-redirects');
+
+gate('writes the attachment pages as static 301s after the hand-written rules', {
+  script: 'legacy-redirects.mjs',
+  env: STRIP_TYPES,
+  files: {
+    'dist/index.html': 'x', 'dist/post/index.html': 'x', 'dist/_redirects': '/old/ /post/ 301\n',
+    'src/data/attachment-redirects.json': JSON.stringify({ '/post/foto-1/': '/post/' }),
+  },
+  expect: 0,
+  then: (dir) => {
+    const out = readFileSync(join(dir, 'dist/_redirects'), 'utf8');
+    if (!out.startsWith('/old/ /post/ 301')) return 'the hand-written rules were not kept first';
+    return out.includes('/post/foto-1/ /post/ 301') ? null : `no static rule for the attachment page:\n${out}`;
+  },
+});
+
+gate('no build output — must refuse', {
+  script: 'legacy-redirects.mjs',
+  env: STRIP_TYPES,
+  files: { 'src/data/attachment-redirects.json': '{}' },
+  expect: 1,
+  contains: 'run the build first',
+});
+
+gate('a target that is not deployed — must refuse (a 301 to a 404)', {
+  script: 'legacy-redirects.mjs',
+  env: STRIP_TYPES,
+  files: { 'dist/index.html': 'x', 'src/data/attachment-redirects.json': JSON.stringify({ '/post/foto-1/': '/post/' }) },
+  expect: 1,
+  contains: 'the target is not deployed',
+});
+
+gate('a source that is a deployed file — must refuse (_redirects would shadow it)', {
+  script: 'legacy-redirects.mjs',
+  env: STRIP_TYPES,
+  files: {
+    'dist/index.html': 'x', 'dist/post/index.html': 'x', 'dist/post/foto-1/index.html': 'x',
+    'src/data/attachment-redirects.json': JSON.stringify({ '/post/foto-1/': '/post/' }),
+  },
+  expect: 1,
+  contains: 'is a deployed file',
+});
+
+gate('more than 2,000 static rules — must refuse (Cloudflare\'s _redirects cap)', {
+  script: 'legacy-redirects.mjs',
+  env: STRIP_TYPES,
+  files: {
+    'dist/index.html': 'x', 'dist/post/index.html': 'x',
+    'src/data/attachment-redirects.json': JSON.stringify(Object.fromEntries(Array.from({ length: 2001 }, (_, i) => [`/post/foto-${i}/`, '/post/']))),
+  },
+  expect: 1,
+  contains: 'caps _redirects at 2000',
 });
 
 describe('check-file-count');

@@ -182,7 +182,7 @@ test('the deploy validator refuses a config that disagrees with the manifest, in
   assert.match(validateWranglerDeployConfig({ ...prod, vars: { ...prod.vars, LEADS_ENABLED: 'true' } }, target('production'), { requireWorkerEntrypoint: true }).join(' | '), /must keep production closed/);
 });
 
-test('d1_leads and media.legacyUploads together need the site-owned Worker that calls legacyRedirect', () => {
+test('d1_leads and media.legacyUploads together need the site-owned Worker for /api/*', () => {
   site();
-  assert.match(errors({ ...manifest(), media: { legacyUploads: true } }), /needs a site-owned src\/worker\.ts that calls legacyRedirect\(\)/);
+  assert.match(errors({ ...manifest(), media: { legacyUploads: true } }), /needs a site-owned src\/worker\.ts for \/api\/\*/);
 });

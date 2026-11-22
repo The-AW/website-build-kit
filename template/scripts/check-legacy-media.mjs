@@ -5,8 +5,8 @@
  *   node scripts/check-legacy-media.mjs [assetsDir]
  *   npm run check:legacy-media
  *
- *  1. The built site has a prerendered 404 page (`404.html`). With `not_found_handling: "none"`
- *     the Worker serves it for unknown paths; with none there, an unknown URL has no body.
+ *  1. The built site has a prerendered 404 page (`404.html`). `not_found_handling: "404-page"`
+ *     serves it for unknown paths from assets; with none there, an unknown URL has no body.
  *  2. Every attachment redirect (`src/data/attachment-redirects.json`, `{ "/slug/": "/target/" }`)
  *     resolves in ONE hop: its target is not itself a source in the map or in `public/_redirects`,
  *     is not itself, and is a route or file the build produced.

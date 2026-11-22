@@ -6,17 +6,19 @@
  *
  * Builds a small "migrated" site in a temp directory: pages that reference old
  * `/wp-content/uploads/` URLs, the originals outside `public/`, and the manifest flag on. Then
- * runs the real pipeline over it (stage → measure → convert → link → rewrite → checks) and the
- * real generated Worker under `wrangler dev --local`. It asserts what a site depends on:
+ * runs the real pipeline over it (stage → measure → convert → link → rewrite → legacy-redirects →
+ * checks) and the real generated config under `wrangler dev --local`. It asserts what a site
+ * depends on:
  *
  *  - only the uploads the pages use are staged and deployed; originals are untouched
  *  - each used PNG/JPG is one WebP sized from the measured width; GIF and favicon stay as they are
  *  - every reference is rewritten, the first image is eager with fetchpriority, `height` follows the WebP
  *  - a repeat run converts nothing; a dangling reference, a missing original and a full disk each FAIL
  *  - the file-count gate refuses over the cap
- *  - the Worker: an old URL is ONE 301 to a file that serves 200; an unknown URL is a REAL 404
+ *  - served by the asset layer, NO Worker (kit 0.1.25, 2026-11-22 Worker-cost fix): an old URL is
+ *    ONE 301 (a static `_redirects` rule) to a file that serves 200; an unknown URL is a REAL 404
  *    (status, not just body), for pages, uploads and HEAD
- *  - with the flag off the generated config is the kit's own (`404-page`, no Worker)
+ *  - the generated config is `404-page` with no Worker, flag on or off
  *
  * The browser step (measure-image-widths) skips with a reason when no Chrome is installed.
  */
@@ -105,11 +107,13 @@ before(async () => {
   put('dist/404.html', '<!doctype html><html><head><title>404</title></head><body><main>Fixture not found page</main></body></html>');
   put('dist/sitemap.xml', '<urlset></urlset>');
 
-  // The worker and what it imports, exactly as the template ships them.
-  for (const f of ['src/legacy-worker.ts', 'src/lib/legacy-uploads.ts', 'src/lib/upload-fallback.ts']) {
-    mkdirSync(dirname(join(dir, f)), { recursive: true });
-    cpSync(join(TEMPLATE, f), join(dir, f));
-  }
+  // What the recon knew about the old library: WordPress sizes that no page uses any more still
+  // get a rule (legacy-redirects reads recon/wp-json and recon/html).
+  put('recon/wp-json/media_per_page_100.json', JSON.stringify([
+    { source_url: `https://old-client.org/${UP}/hero.png`, media_details: { sizes: { medium_large: { source_url: `https://old-client.org/${UP}/hero-768x512.png` } } } },
+    { source_url: `https://old-client.org/${UP}/bg-scaled.jpg`, media_details: { sizes: {} } },
+    { source_url: `https://old-client.org/${UP}/unused.png`, media_details: { sizes: {} } },
+  ]));
   put('src/data/attachment-redirects.json', JSON.stringify({ '/hero-attachment/': '/post/' }));
   put('public/_headers', '/wp-content/uploads/*\n  Cache-Control: public, max-age=31536000, immutable\n');
 });
@@ -208,6 +212,14 @@ test('link, rewrite and checks: every reference points at a deployed file', () =
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /5 original files used/);
 
+  r = run(dir, 'legacy-redirects.mjs', ['dist']);
+  assert.equal(r.code, 0, r.out);
+  const rules = readFileSync(join(dir, 'dist/_redirects'), 'utf8');
+  assert.ok(rules.includes(`/${UP}/hero-768x512.png /${UP}/hero.webp 301\n`), rules);
+  assert.ok(rules.includes(`/${UP}/bg-scaled.jpg /${UP}/bg.webp 301\n`), rules);
+  assert.ok(rules.includes('/hero-attachment/ /post/ 301\n'), rules);
+  assert.ok(!rules.includes('unused'), 'no deployed target, no rule: a real 404');
+  assert.ok(!rules.includes(`/${UP}/cropped-icon-32x32.png `), 'a deployed file is never shadowed by a redirect');
   r = run(dir, 'check-file-count.mjs', ['dist']);
   assert.equal(r.code, 0, r.out);
   r = run(dir, 'check-legacy-media.mjs', ['dist']);
@@ -277,12 +289,12 @@ test('check-legacy-media refuses a missing 404 page, an attachment chain and a m
   assert.match(r.out, /immutable/);
 });
 
-test('manifest: the flag is validated and drives the generated Worker config', () => {
+test('manifest: the flag is validated; the generated config never sends a miss to a Worker', () => {
+  // Kit 0.1.25 (2026-11-22): legacy uploads no longer need a Worker. "none" ran it for every crawler 404.
   const on = createWranglerConfig(manifest(true), 'staging', dir);
-  assert.equal(on.assets.not_found_handling, 'none');
-  assert.equal(on.assets.binding, 'ASSETS');
-  assert.equal(on.main, '../src/legacy-worker.ts');
-  assert.equal(on.assets.run_worker_first, undefined, 'asset-first: only a miss reaches the Worker');
+  assert.equal(on.assets.not_found_handling, '404-page');
+  assert.equal(on.main, undefined, 'assets-only: no request can run a Worker');
+  assert.equal(on.assets.binding, undefined);
 
   // Off (the default): the kit's own config — a static 404 page and no Worker.
   const off = createWranglerConfig(manifest(false), 'staging', dir);
@@ -293,17 +305,12 @@ test('manifest: the flag is validated and drives the generated Worker config', (
   const target = (m) => validateMigrationManifest(m, 'staging', { phase: 'build', cwd: dir });
   assert.equal(target(manifest(true)).ok, true, target(manifest(true)).errors.join('; '));
   assert.match(target({ ...manifest(true), media: { legacyUploads: 'yes' } }).errors.join('; '), /must be true or false/);
-  // The flag needs something that answers an unknown URL.
-  const bare = mkdtempSync(join(tmpdir(), 'kit-legacy-bare-'));
-  assert.match(validateMigrationManifest(manifest(true), 'staging', { phase: 'build', cwd: bare }).errors.join('; '), /neither src\/legacy-worker\.ts nor src\/worker\.ts exists/);
-  rmSync(bare, { recursive: true, force: true });
-
-  // A deploy config must agree with the flag in both directions.
+  // A deploy config that sends misses to a Worker is refused.
   const t = { ...target(manifest(true)), accountId: ID };
   const ok = { ...on, account_id: ID };
   assert.deepEqual(validateWranglerDeployConfig(ok, t), []);
-  assert.match(validateWranglerDeployConfig({ ...ok, assets: { ...ok.assets, not_found_handling: '404-page' } }, t).join('; '), /needs assets\.not_found_handling "none"/);
-  assert.match(validateWranglerDeployConfig({ ...ok, main: undefined }, t).join('; '), /needs a Worker entrypoint/);
+  assert.match(validateWranglerDeployConfig({ ...ok, assets: { ...ok.assets, not_found_handling: 'none' } }, t).join('; '), /must be 404-page/);
+  assert.match(validateWranglerDeployConfig({ ...ok, main: '../src/worker.ts' }, t).join('; '), /run_worker_first exactly/);
   const tOff = { ...target(manifest(false)), accountId: ID };
   assert.match(validateWranglerDeployConfig({ ...off, account_id: ID, assets: { ...off.assets, not_found_handling: 'none' } }, tOff).join('; '), /must be 404-page/);
 });
@@ -314,7 +321,7 @@ const freePort = () => new Promise((resolve) => {
   const s = createServer().listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
 });
 
-test('Worker: old URLs are one 301 to a file that serves; an unknown URL is a real 404', async (t) => {
+test('assets only: old URLs are one 301 to a file that serves; an unknown URL is a real 404', async (t) => {
   const wrangler = join(TEMPLATE, 'node_modules/wrangler/bin/wrangler.js');
   if (!existsSync(wrangler)) return t.skip('wrangler is not installed (npm ci in template/)');
   mkdirSync(join(dir, '.aw'), { recursive: true });
@@ -385,6 +392,7 @@ test('Worker: old URLs are one 301 to a file that serves; an unknown URL is a re
     assert.equal((await get(`/${UP}/ghost-300x200.png`)).status, 404);
     assert.equal((await get(`/${UP}/unused.png`)).status, 404, 'in the library, on no page: not deployed, not redirected');
     assert.equal((await get('/no-such-page/', { method: 'HEAD' })).status, 404);
-    assert.equal((await get('/no-such-page/', { method: 'POST', body: 'x' })).status, 404);
+    // The asset layer answers a POST to a missing path with 405, not a 200 page: still not a soft 404.
+    assert.ok([404, 405].includes((await get('/no-such-page/', { method: 'POST', body: 'x' })).status));
   });
 });
