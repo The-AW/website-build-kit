@@ -101,9 +101,11 @@ path. This is what keeps `width`/`height` on every image so nothing shifts.
 `/wp-content/uploads/…`; originals go in `media/source/legacy/wp-content/uploads/` (never
 `public/`). The build then stages the uploads the built pages use, deploys each as one WebP,
 rewrites every reference and fails on a missing file, checks the file count against the Workers
-Free cap, and serves old URLs through `src/legacy-worker.ts` (`not_found_handling: "none"`; an
-unknown URL is still a real 404). `build.md` §5b has the steps and `npm run test:legacy-media`
-proves the Worker. Upload filenames are cached immutable for a year, so a replaced image gets a new name.
+Free cap, and writes old URLs as static `_redirects` rules (`scripts/legacy-redirects.mjs`, at most
+2,000); an unknown URL is the static 404 (`not_found_handling: "404-page"`). No Worker runs for any
+of it: Workers Free is 100k Worker requests a day for the whole account, and `"none"` once spent
+them on crawler 404s until every site's form answered 429. `build.md` §5b has the steps and
+`npm run test:legacy-media` proves them. Upload filenames are cached immutable for a year, so a replaced image gets a new name.
 
 ⚠ **TWO LEAD DATABASES FOR THE WHOLE COMPANY. NEVER CREATE ONE PER SITE.** Every The-AW site's
 contact leads go into `websites-contact-crm-staging` (`61bc71ad-a87c-4d60-9b94-7ee4f5ce0b62`) from staging

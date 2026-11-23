@@ -175,9 +175,9 @@ jobs:
         run: npm run test:content
 
       # Migrated-media tools (build.md §5b), on a fixture with media.legacyUploads on: stage → measure
-      # → convert → link → rewrite → checks, then the GENERATED Worker under `wrangler dev --local`.
-      # ⚠ It asserts the STATUS of an unknown URL. `not_found_handling: "none"` removes Cloudflare's
-      # own 404, and a handler bug then reads as a 200 carrying the 404 page's body. Needs the Chrome
+      # → convert → link → rewrite → checks, then the generated config under `wrangler dev --local`.
+      # ⚠ It asserts the STATUS of an unknown URL, served by `not_found_handling: "404-page"` without a
+      # Worker (0.1.25: "none" spent Workers Free requests on every crawler 404). Needs the Chrome
       # installed above for the width measurement; skips that one test with a reason if it is absent.
       - name: Migrated-media tools and Worker
         working-directory: template

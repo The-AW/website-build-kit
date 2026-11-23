@@ -207,6 +207,10 @@ if (mediaPlan.action === 'run' && usesLegacyUploads(manifest)) {
   step(process.execPath, [...strip, 'scripts/webp-legacy-media.mjs']);
   step(process.execPath, ['scripts/link-legacy-media.mjs']);
   step(process.execPath, [...strip, 'scripts/rewrite-webp-refs.mjs']);
+  /* Old upload and attachment URLs as static _redirects rules (2026-11-22 Worker-cost fix): the asset
+     layer answers them, so a crawler on dead URLs never runs the Worker. After the uploads are linked,
+     because each target must be a deployed file. */
+  step(process.execPath, [...strip, 'scripts/legacy-redirects.mjs']);
   step(process.execPath, ['scripts/check-file-count.mjs']);
   step(process.execPath, ['scripts/check-legacy-media.mjs']);
 } else if (mediaPlan.action === 'run') {

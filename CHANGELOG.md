@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-11-23 — 0.1.25: a 404 never runs a Worker (Workers Free budget)
+
+Released as 0.1.25 (`create/package.json`). Owner decision 68; the fix was proven on 123achei (PR #3) first.
+
+* **`assets.not_found_handling` is always `"404-page"`**, `media.legacyUploads` included. With `"none"`, every asset
+  miss ran the Worker: on 2026-11-22 one site's crawler 404s took the account over the Workers Free limit (100,000
+  Worker requests a day, shared by every site), and every Worker path in the account answered 429 (Error 1027),
+  lead forms included.
+* **`run_worker_first` must be exactly `["/api/*"]` wherever there is a `main`.** With a Worker script, Cloudflare
+  sends a miss that is not a `Sec-Fetch-Mode: navigate` request (crawlers, scanners) to the Worker unless
+  `run_worker_first` is a list; `true` runs it on every request. The validator, `check-env` and `deploy-aw` refuse
+  both (`test:gates`, `test:legacy-media`).
+* **Old WordPress URLs are static `_redirects` rules**: `scripts/legacy-redirects.mjs` (build step, after the uploads
+  are linked) writes attachment pages and the recon's old upload URLs → their deployed WebP; it refuses a shadowed
+  file, an undeployed target or more than 2,000 static rules. It reads `recon/wp-json`, `recon/html` and the media inventory
+  `recon/media.csv`. `src/legacy-worker.ts` is gone: a legacy site without
+  forms deploys **no Worker**; with forms, the Worker sees `/api/*` only.
+* Behaviour change: a slashless attachment URL (`/slug`) and an upload size the recon never saw are now plain 404s.
+* **Existing sites keep the old config until they adopt this** (`scripts/lib/aw-migration.mjs`, `check-env.mjs`,
+  `build.mjs`, `legacy-redirects.mjs`, `src/lib/legacy-uploads.ts`, the site's `src/worker.ts`) and redeploy.
+
 ## 2026-11-20 — 0.1.24: two shared lead databases for every site; Turnstile widgets per group
 
 Released as 0.1.24 (`create/package.json`), so a site scaffolded from here is stamped with a version that

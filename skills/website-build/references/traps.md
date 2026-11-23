@@ -340,8 +340,9 @@ its own `wrangler.json` into `dist/server/` with `main` set correctly.
 ### Cloudflare `_redirects` only accepts 200/301/302/303/307/308
 
 A `404` status in a rule is rejected — the whole rule is dropped with a warning that scrolls
-past in the deploy output. Paths that should 404 need no rule at all; the worker returns a
-real 404 for them because `not_found_handling` is `"none"`.
+past in the deploy output. Paths that should 404 need no rule at all; `not_found_handling: "404-page"` serves the real 404
+from the asset layer without running a Worker (never `"none"`: on Workers Free every crawler 404
+would then cost a Worker request — see build.md §5b).
 
 ---
 
