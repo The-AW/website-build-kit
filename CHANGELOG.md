@@ -14,7 +14,8 @@ Released as 0.1.25 (`create/package.json`). Owner decision 68; the fix was prove
   both (`test:gates`, `test:legacy-media`).
 * **Old WordPress URLs are static `_redirects` rules**: `scripts/legacy-redirects.mjs` (build step, after the uploads
   are linked) writes attachment pages and the recon's old upload URLs → their deployed WebP; it refuses a shadowed
-  file, an undeployed target or more than 2,000 static rules. `src/legacy-worker.ts` is gone: a legacy site without
+  file, an undeployed target or more than 2,000 static rules. It reads `recon/wp-json`, `recon/html` and the media inventory
+  `recon/media.csv`. `src/legacy-worker.ts` is gone: a legacy site without
   forms deploys **no Worker**; with forms, the Worker sees `/api/*` only.
 * Behaviour change: a slashless attachment URL (`/slug`) and an upload size the recon never saw are now plain 404s.
 * **Existing sites keep the old config until they adopt this** (`scripts/lib/aw-migration.mjs`, `check-env.mjs`,

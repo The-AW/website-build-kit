@@ -4343,6 +4343,20 @@ gate('writes the attachment pages as static 301s after the hand-written rules', 
   },
 });
 
+gate('reads the media inventory (recon/media.csv) for old upload URLs', {
+  script: 'legacy-redirects.mjs',
+  env: STRIP_TYPES,
+  files: {
+    'dist/index.html': 'x', 'dist/wp-content/uploads/2024/01/foto.webp': 'x',
+    'recon/media.csv': 'source_url,local_path,status\n"https://old.example/wp-content/uploads/2024/01/foto-300x200.png","x","used"\n',
+  },
+  expect: 0,
+  then: (dir) => {
+    const out = readFileSync(join(dir, 'dist/_redirects'), 'utf8');
+    return out.includes('/wp-content/uploads/2024/01/foto-300x200.png /wp-content/uploads/2024/01/foto.webp 301') ? null : `no rule from recon/media.csv:\n${out}`;
+  },
+});
+
 gate('no build output — must refuse', {
   script: 'legacy-redirects.mjs',
   env: STRIP_TYPES,

@@ -12,8 +12,8 @@
  *  1. every attachment page in src/data/attachment-redirects.json (`/slug/`, as WordPress
  *     published it) → its parent, 301. The Worker also answered the slashless `/slug`; those
  *     extra rules would exceed the cap, so `/slug` is now a real 404;
- *  2. every old upload URL the recon knows (recon/wp-json media incl. every WordPress size, and
- *     every /wp-content/uploads/ reference in recon/html) that is not deployed as it is → the
+ *  2. every old upload URL the recon knows (recon/wp-json media incl. every WordPress size, every
+ *     /wp-content/uploads/ reference in recon/html, and recon/media.csv) that is not deployed as it is → the
  *     deployed file the Worker's own fallback picked (src/lib/upload-fallback.ts: original →
  *     .webp, `-WxH` / `-scaled` variant → the hosted original's WebP), 301. No target → no rule
  *     (a real 404, as before).
@@ -108,6 +108,15 @@ if (existsSync('recon/html')) {
   const token = uploadTokenRegex([...ownHosts(readMigrationManifest())]);
   for (const path of walk('recon/html')) {
     for (const m of readFileSync(path, 'utf8').matchAll(token)) remember(m[2]);
+  }
+}
+// The media inventory (`inventories.media`, default recon/media.csv; source_url is the first column). Some sites
+// keep their upload list only here, with no recon/wp-json or recon/html: without it they got 0 rules and every
+// old upload URL became a 404 (setweb, comparyprotecaoveicular, someimagem, decision 68 round 2).
+if (existsSync('recon/media.csv')) {
+  for (const line of readFileSync('recon/media.csv', 'utf8').split('\n').slice(1)) {
+    const first = line.startsWith('"') ? line.slice(1, line.indexOf('"', 1)) : line.split(',')[0];
+    if (first) remember(first);
   }
 }
 const exists = async (p) => deployed(p);
