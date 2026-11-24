@@ -48,7 +48,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync,
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const RESET = '\x1b[0m';
 const RED = '\x1b[31m';
@@ -611,6 +611,267 @@ gate('matching generated runtime config is the file passed to Wrangler dry-run',
   });
 
   rmSync(runtimeNpxDirectory, { recursive: true, force: true });
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * deploy-aw — production equals origin/<default branch>
+ *
+ * The 2026-11-23 audit: two sites live from commits that existed on one Mac,
+ * one live from an unmerged PR, and one where a deploy from `main` silently
+ * overwrote an unmerged fix and the contact form was dead for five days. Every
+ * one of those deploys was green. These cases use a real repository with a
+ * local bare `origin` whose default branch is deliberately NOT `main`, so a gate
+ * that assumed `main` fails the clean case.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+describe('deploy-aw production git gate');
+
+const GIT_ID = ['-c', 'user.name=kit-test', '-c', 'user.email=kit-test@example.invalid', '-c', 'commit.gpgsign=false'];
+const sh = (dir, ...args) => {
+  const r = spawnSync('git', [...GIT_ID, ...args], { cwd: dir, encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
+  return r.stdout.trim();
+};
+const DEFAULT_BRANCH = 'trunk';
+/* A production fixture that passes every manifest check, so the only thing
+   between it and Wrangler is the git gate. `origin.git/` sits inside the
+   fixture but is ignored, so it does not make the tree dirty. */
+const releaseFiles = {
+  '.gitignore': 'origin.git/\n.aw/\ndist/\nwrangler-invocations.log\n',
+  'BUILD-STATE.md': '# Build state\n',
+  'aw-migration.json': awManifest({
+    acceptance: { criteria: ['route parity'], recordedBy: 'owner', recordedAt: '2026-11-09T10:00:00Z' },
+    rollback: {
+      snapshotPath: 'rollback/snapshot.json',
+      wordpressOrigin: 'https://wordpress-origin.example.net',
+      restoreSteps: ['restore origin'],
+      cloudwaysRetirement: { requested: false, backupVerified: false, sharedServerDependenciesChecked: false },
+    },
+  }),
+  'rollback/snapshot.json': '{"routes":[]}\n',
+  'recon/urls.txt': '/\n',
+  'recon/media.csv': 'source_url,local_path,status,sha256,alt,usage\nhttps://old-client.org/logo.png,media/source/logo.png,downloaded,0123456789abcdef,Logo,header\n',
+  'public/_redirects': '# no redirects selected for this fixture\n',
+  'scripts/build.mjs': [
+    "import { mkdirSync, writeFileSync } from 'node:fs';",
+    "mkdirSync('.aw', { recursive: true });",
+    "mkdirSync('dist', { recursive: true });",
+    "writeFileSync('dist/index.html', '<!doctype html>');",
+    `writeFileSync('.aw/wrangler-production.jsonc', ${JSON.stringify(awConfig('production'))});`,
+    `writeFileSync('.aw/wrangler-staging.jsonc', ${JSON.stringify(awConfig('staging'))});`,
+  ].join('\n'),
+};
+/** Commit the fixture, push it to a bare origin whose HEAD is `trunk`, then apply `after`. */
+const releaseRepo = (after) => (dir) => {
+  sh(dir, 'init', '--quiet', '--bare', '-b', DEFAULT_BRANCH, 'origin.git');
+  sh(dir, 'init', '--quiet', '-b', DEFAULT_BRANCH);
+  sh(dir, 'add', '-A');
+  sh(dir, 'commit', '--quiet', '-m', 'release');
+  sh(dir, 'remote', 'add', 'origin', join(dir, 'origin.git'));
+  sh(dir, 'push', '--quiet', '-u', 'origin', DEFAULT_BRANCH);
+  if (after) after(dir);
+};
+const wranglerLog = (dir) => (existsSync(join(dir, 'wrangler-invocations.log')) ? readFileSync(join(dir, 'wrangler-invocations.log'), 'utf8') : '');
+const noDeploy = (dir) => (wranglerLog(dir).includes('wrangler deploy') ? 'called Wrangler deploy after the git gate refused' : null);
+const CONFIRM = ['production', '--confirm-production'];
+
+/* The refusals run before Wrangler is ever spawned, so they need no npx stub
+   and run on Windows too. */
+gate('dirty working tree — must refuse before build', {
+  script: 'deploy-aw.mjs',
+  args: CONFIRM,
+  files: releaseFiles,
+  setup: releaseRepo((dir) => writeFileSync(join(dir, 'stray.txt'), 'not committed\n')),
+  expect: 1,
+  contains: 'the working tree is not clean',
+  then: (dir, out) => (!out.includes('stray.txt') ? 'refusal did not name the uncommitted file' : noDeploy(dir)),
+});
+
+gate('a staged-but-uncommitted edit counts as dirty — must refuse', {
+  script: 'deploy-aw.mjs',
+  args: CONFIRM,
+  files: releaseFiles,
+  setup: releaseRepo((dir) => {
+    writeFileSync(join(dir, 'BUILD-STATE.md'), '# Build state\nedited\n');
+    sh(dir, 'add', 'BUILD-STATE.md');
+  }),
+  expect: 1,
+  contains: 'the working tree is not clean',
+});
+
+gate('HEAD ahead of origin on the default branch (unpushed) — must refuse and say git push', {
+  script: 'deploy-aw.mjs',
+  args: CONFIRM,
+  files: releaseFiles,
+  setup: releaseRepo((dir) => sh(dir, 'commit', '--quiet', '--allow-empty', '-m', 'local only')),
+  expect: 1,
+  contains: `git push origin ${DEFAULT_BRANCH}, then run the deploy again`,
+  then: (dir, out) => (!out.includes(`production deploys only from origin/${DEFAULT_BRANCH}`) ? 'headline did not name the detected default branch' : noDeploy(dir)),
+});
+
+gate('feature branch, pushed but not merged — must refuse and say open a PR', {
+  script: 'deploy-aw.mjs',
+  args: CONFIRM,
+  files: releaseFiles,
+  setup: releaseRepo((dir) => {
+    sh(dir, 'switch', '--quiet', '-c', 'fix/contact-form');
+    sh(dir, 'commit', '--quiet', '--allow-empty', '-m', 'unmerged fix');
+    sh(dir, 'push', '--quiet', 'origin', 'fix/contact-form');
+  }),
+  expect: 1,
+  contains: `open a PR to ${DEFAULT_BRANCH} and merge it`,
+  then: noDeploy,
+});
+
+gate('HEAD behind origin (would roll production back) — must refuse', {
+  script: 'deploy-aw.mjs',
+  args: CONFIRM,
+  files: releaseFiles,
+  setup: releaseRepo((dir) => {
+    sh(dir, 'commit', '--quiet', '--allow-empty', '-m', 'merged later');
+    sh(dir, 'push', '--quiet', 'origin', DEFAULT_BRANCH);
+    sh(dir, 'reset', '--quiet', '--hard', 'HEAD~1');
+  }),
+  expect: 1,
+  contains: 'would roll production back',
+  then: noDeploy,
+});
+
+gate('git fetch origin fails — must refuse, never deploy blind', {
+  script: 'deploy-aw.mjs',
+  args: CONFIRM,
+  files: releaseFiles,
+  setup: releaseRepo((dir) => sh(dir, 'remote', 'set-url', 'origin', join(dir, 'no-such-remote.git'))),
+  expect: 1,
+  contains: 'git fetch origin failed',
+  then: noDeploy,
+});
+
+gate('not a git repository — must refuse', {
+  script: 'deploy-aw.mjs',
+  args: CONFIRM,
+  files: releaseFiles,
+  expect: 1,
+  contains: 'not a git repository',
+});
+
+gate('--allow-unmerged without a reason — must refuse', {
+  script: 'deploy-aw.mjs',
+  args: [...CONFIRM, '--allow-unmerged'],
+  files: releaseFiles,
+  expect: 1,
+  contains: '--allow-unmerged needs a reason',
+});
+
+if (process.platform === 'win32') {
+  results.push({
+    gate: currentGate,
+    label: 'stubbed Wrangler release cases (allowed, stamped, escape recorded)',
+    ok: true,
+    skipped: true,
+    detail: 'skipped on Windows — an npx PATH shim does not stand in for npx.cmd',
+  });
+} else {
+  const releaseNpx = mkdtempSync(join(tmpdir(), 'kit-release-npx-'));
+  writeFileSync(join(releaseNpx, 'npx'), [
+    '#!/bin/sh',
+    'if [ "$1" = "--no-install" ] && [ "$2" = "wrangler" ] && { [ "$3" = "whoami" ] || [ "$3" = "deploy" ]; }; then',
+    '  printf "%s\\n" "$*" >> "$PWD/wrangler-invocations.log"',
+    '  exit 0',
+    'fi',
+    'echo "unexpected Wrangler invocation: $*" >&2',
+    'exit 77',
+    '',
+  ].join('\n'));
+  chmodSync(join(releaseNpx, 'npx'), 0o755);
+  const releaseEnv = { PATH: `${releaseNpx}:${process.env.PATH}` };
+  const stampedWith = (dir, branch, suffix = '') => {
+    const sha = sh(dir, 'rev-parse', 'HEAD');
+    const short = sh(dir, 'rev-parse', '--short=12', 'HEAD');
+    const deploy = wranglerLog(dir).split(/\r?\n/).find((l) => l.includes('wrangler deploy')) ?? '';
+    return deploy.includes(`--tag ${short}`) && deploy.includes(`--message ${branch} ${sha}${suffix}`)
+      ? null
+      : `Wrangler deploy was not stamped with ${short} / "${branch} ${sha}${suffix}": ${JSON.stringify(deploy)}`;
+  };
+
+  gate('clean tree, HEAD equals origin/<default> (not main) — deploys, stamped with the commit', {
+    script: 'deploy-aw.mjs',
+    args: CONFIRM,
+    env: releaseEnv,
+    files: releaseFiles,
+    setup: releaseRepo(),
+    expect: 0,
+    contains: 'deploy command completed for client-production',
+    then: (dir) => stampedWith(dir, DEFAULT_BRANCH),
+  });
+
+  gate('--allow-unmerged "<reason>" — deploys, warns, records reason + SHA + date in BUILD-STATE.md', {
+    script: 'deploy-aw.mjs',
+    args: [...CONFIRM, '--allow-unmerged', 'hotfix while GitHub is down'],
+    env: releaseEnv,
+    files: releaseFiles,
+    setup: releaseRepo((dir) => sh(dir, 'commit', '--quiet', '--allow-empty', '-m', 'local only')),
+    expect: 0,
+    contains: 'DEPLOYING UNMERGED CODE TO PRODUCTION',
+    then: (dir) => {
+      const sha = sh(dir, 'rev-parse', 'HEAD');
+      const record = readFileSync(join(dir, 'BUILD-STATE.md'), 'utf8');
+      for (const expected of ['Unmerged production deploy', 'hotfix while GitHub is down', sha, `origin/${DEFAULT_BRANCH}`]) {
+        if (!record.includes(expected)) return `BUILD-STATE.md record is missing ${JSON.stringify(expected)}`;
+      }
+      if (!/· \d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(record)) return 'BUILD-STATE.md record has no date';
+      return stampedWith(dir, DEFAULT_BRANCH, ' UNMERGED');
+    },
+  });
+
+  gate('production dry-run from an unmerged branch — warns, writes nothing, records nothing', {
+    script: 'deploy-aw.mjs',
+    args: ['production', '--dry-run'],
+    env: releaseEnv,
+    files: releaseFiles,
+    setup: releaseRepo((dir) => sh(dir, 'commit', '--quiet', '--allow-empty', '-m', 'local only')),
+    expect: 0,
+    contains: 'a real deploy would refuse',
+    then: (dir) => (readFileSync(join(dir, 'BUILD-STATE.md'), 'utf8').includes('Unmerged') ? 'a dry-run wrote an unmerged-deploy record' : null),
+  });
+
+  gate('staging from an unpushed feature branch with a dirty tree — allowed, still stamped', {
+    script: 'deploy-aw.mjs',
+    args: ['staging', '--dry-run'],
+    env: releaseEnv,
+    files: releaseFiles,
+    setup: releaseRepo((dir) => {
+      sh(dir, 'switch', '--quiet', '-c', 'feature/x');
+      sh(dir, 'commit', '--quiet', '--allow-empty', '-m', 'wip');
+      writeFileSync(join(dir, 'stray.txt'), 'wip\n');
+    }),
+    expect: 0,
+    contains: 'no live Worker was changed',
+    then: (dir) => {
+      const deploy = wranglerLog(dir);
+      const short = sh(dir, 'rev-parse', '--short=12', 'HEAD');
+      return deploy.includes(`--tag ${short}-dirty`) && deploy.includes('--message feature/x ') && deploy.includes(' +uncommitted')
+        ? null
+        : `staging deploy not stamped as a dirty feature/x build: ${JSON.stringify(deploy)}`;
+    },
+  });
+
+  rmSync(releaseNpx, { recursive: true, force: true });
+}
+
+{
+  /* cmd.exe receives argv joined unquoted when spawnSync has `shell: true`, so a
+     message with a space would arrive as two arguments on Windows. */
+  const { stampArgs } = await import(pathToFileURL(join(TEMPLATE_SCRIPTS, 'lib', 'release-gate.mjs')).href);
+  const commit = { inRepo: true, sha: 'a'.repeat(40), short: 'a'.repeat(12), branch: `feature/${'x'.repeat(120)}`, dirty: [] };
+  const args = stampArgs(commit, { unmerged: true, windowsShell: true });
+  const message = args[3] ?? '';
+  results.push({
+    gate: currentGate,
+    label: 'stamp: message ≤ 100 chars, tag ≤ 25, quoted for cmd.exe',
+    ok: args[0] === '--tag' && args[1].length <= 25 && message.startsWith('"') && message.endsWith('"') && message.length - 2 <= 100 && message.includes('a'.repeat(40)),
+    detail: JSON.stringify(args),
+  });
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -3885,6 +4146,37 @@ gate('a site with no pa11y runner is not reported as one scheme short', {
   setup: initRepo,
   expect: 0,
   contains: 'no two-scheme claim to be wrong',
+});
+
+/* D10 — a deploy without the git gate is the state the 2026-11-23 audit found
+   on every delivered site. */
+gate('a deploy script with no git gate reads as drift', {
+  script: 'check-drift.mjs',
+  files: {
+    'package.json': JSON.stringify({ name: 'x', websiteBuildKit: { version: '0.1.25' } }),
+    'scripts/optimize-media.mjs': CURRENT_PIPELINE,
+    'scripts/check-contrast.mjs': KIT_CONTRAST,
+    'scripts/deploy-aw.mjs': "run(npx, ['--no-install', 'wrangler', 'deploy', '--config', wranglerConfig]);\n",
+    'src/pages/index.astro': '<p>x</p>\n',
+  },
+  setup: initRepo,
+  expect: 0,
+  contains: 'uploads whatever is checked out',
+});
+
+gate('a deploy script carrying the git gate is not reported', {
+  script: 'check-drift.mjs',
+  files: {
+    'package.json': JSON.stringify({ name: 'x', websiteBuildKit: { version: '0.1.26' } }),
+    'scripts/optimize-media.mjs': CURRENT_PIPELINE,
+    'scripts/check-contrast.mjs': KIT_CONTRAST,
+    'scripts/deploy-aw.mjs': "import { releaseGate } from './lib/release-gate.mjs';\n",
+    'scripts/lib/release-gate.mjs': 'const headline = `production deploys only from ${target}`;\n',
+    'src/pages/index.astro': '<p>x</p>\n',
+  },
+  setup: initRepo,
+  expect: 0,
+  contains: 'nothing behind',
 });
 
 gate('an unstamped site is named as such', {

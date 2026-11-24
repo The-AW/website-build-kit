@@ -57,6 +57,8 @@ the old server. If some paths must keep going to the old origin, they need a nar
    ```
    Check the route, the file count against the plan cap, `workers_dev`/`preview_urls` false, no `noindex`,
    production canonicals, robots and sitemap on the production host, and no test-only vars.
+   The dry run also prints **"a real deploy would refuse"** when the checkout is not `origin/<default branch>`.
+   Clear that before the window (§3.3), not in it.
 5. **Other domains** that point at the old server are inventoried (§8). Do this *before* the window; it is
    the step that decides whether the old server can ever be retired.
 6. **A second person or a written go**, one release candidate, **one live writer**. Pick a low-traffic hour.
@@ -69,15 +71,34 @@ the old server. If some paths must keep going to the old origin, they need a nar
    `d1_leads`: the shared production lead database (never a new one) and the group's shared Turnstile widget with the site's root domain on it,
    a rate-limiter namespace; production opens only with `forms.productionEnabled` and a recorded
    acceptance). Then `npm run build:production` and the dry run again.
-3. **Deploy.** `npm run deploy:production -- --confirm-production`. With `attach: "route"` **this deploy is the
+3. **Merge to the default branch, push, then deploy from it.** Merge the release PR on GitHub, then:
+   ```bash
+   git switch <default> && git pull --ff-only     # <default>: git ls-remote --symref origin HEAD
+   git status --short                             # prints nothing
+   ```
+   `deploy:production` refuses unless the tree is clean, `git fetch origin` succeeds and `HEAD` **equals**
+   `origin/<default>`, and says what to run instead. It refuses a checkout ahead of origin (unpushed), behind it
+   (a rollback past merged work) or beside it (an unmerged PR). Never deploy production from a feature or
+   migration branch: the next deploy from the default branch silently undoes it. That is how a contact form stayed
+   dead for five days on a site whose every check was green (audit, 2026-11-23).
+   `--allow-unmerged "<reason>"` is the emergency escape only. It deploys, warns, and appends the reason, commit
+   and date to `BUILD-STATE.md`; the go-live stays **open** until a deploy from the default branch replaces it.
+   Every deploy, staging too, is stamped `--tag <short sha> --message "<branch> <sha>"`, so
+   `npx wrangler versions list --name <worker>` shows which commit is live.
+4. **Deploy.** `npm run deploy:production -- --confirm-production`. With `attach: "route"` **this deploy is the
    switch**: the route goes live with the upload; DNS is untouched. Read back the route ID, version ID and
    deployment ID and write them down now. If Wrangler's bulk asset transfer fails, use the direct-upload API
    path in the process doc §4 and create the route only after the version is active.
-4. **Secrets** (form sites): set `TURNSTILE_SECRET_KEY` and `LEADS_RATE_LIMIT_HMAC_SECRET` on the Worker
+5. **Secrets** (form sites): set `TURNSTILE_SECRET_KEY` and `LEADS_RATE_LIMIT_HMAC_SECRET` on the Worker
    (pasted or piped, never echoed or committed). Until they are set the form answers "unavailable" and the
    rest of the site is unaffected. Read bindings and secrets back **by name only**.
-5. **Smoke test** (§4), inside the first five minutes. **Any red: roll back (§5), then investigate.**
-6. **Record** the route ID, version and deployment IDs, release SHA and time in the site's `BUILD-STATE.md`.
+6. **Smoke test** (§4), inside the first five minutes. **Any red: roll back (§5), then investigate.**
+7. **Record** the route ID, version and deployment IDs, release SHA and time in the site's `BUILD-STATE.md`, and get
+   that commit onto the default branch (a commit that touches only records changes nothing that is deployed).
+
+**The go-live is done only when production equals `origin/<default>`**: the live Worker version's tag is a commit
+on `origin/<default>`, `git diff --stat <tag> origin/<default>` shows nothing but records such as `BUILD-STATE.md`,
+and no `--allow-unmerged` record in `BUILD-STATE.md` is still open. "Deployed from a branch, PR open" is not done.
 
 ## 4. The five-minute smoke test
 
@@ -103,7 +124,7 @@ Decide fast. If a smoke check fails and the cause is not obvious within ten minu
 | Situation | Action | Takes effect |
 |---|---|---|
 | A new release is bad and the previous Worker release was good | `npx wrangler rollback <previous-version-id> --name <worker>` | Seconds; the hostname stays on the Worker |
-| Back to the old site (route) | `DELETE /zones/<zone>/workers/routes/<route-id>` (the ID from §3.3) | About 30 s at the edge. No DNS change, no resolver wait, about 2 minutes by hand |
+| Back to the old site (route) | `DELETE /zones/<zone>/workers/routes/<route-id>` (the ID from §3.4) | About 30 s at the edge. No DNS change, no resolver wait, about 2 minutes by hand |
 | Back to the old site (custom domain) | Delete the custom domain, **then** recreate the proxied record from the snapshot | Edge in about a minute once the record exists; resolvers that cached NXDOMAIN wait up to the SOA negative TTL |
 
 After any rollback to the old site: read back the route list (and DNS, for a custom domain); `curl` the home
@@ -171,7 +192,8 @@ recovery window, and a backup is verified (`rollback.cloudwaysRetirement`). Othe
 
 ## 9. After the window
 
-First day: Search Console sitemap submitted (the client's account), robots and canonicals correct, form row read
+First day: production equals `origin/<default>` (§3, the closing paragraph), every later fix goes through a PR to the
+default branch and is deployed from it; Search Console sitemap submitted (the client's account), robots and canonicals correct, form row read
 back and deleted (form sites), analytics Realtime shows one pageview per visit, Workers requests and CPU against
 the plan budget (Workers Free: 100,000 requests a day, 10 ms CPU), `npm run a11y` with the dated evidence pack.
 First week: coverage and 404 reports against the pre-cutover SEO baseline, the Worker error rate each day.

@@ -408,6 +408,32 @@ add(
         : 'no pa11y runner here, so there is no two-scheme claim to be wrong',
 );
 
+/* ── D10 · production ships only what GitHub's default branch has ─────────── */
+
+/*
+ * ⚠ A DEPLOY OF THE WORKING TREE IS GREEN WHATEVER IT SHIPS.
+ *
+ *   The 2026-11-23 audit found two sites live from commits that existed on one
+ *   Mac, one live from an unmerged PR, and one where a later deploy from `main`
+ *   silently overwrote an unmerged fix — its contact form was dead for five
+ *   days. Every one of those deploys passed every gate. The marker is a phrase
+ *   from the refusal itself, so a deploy script with a different git check reads
+ *   as drift and gets read, rather than as covered.
+ */
+const deployScript = read(join('scripts', 'deploy-aw.mjs'));
+const gatesRelease = [deployScript, read(join('scripts', 'lib', 'release-gate.mjs'))]
+  .some((src) => (src ?? '').includes('production deploys only from'));
+add(
+  'D10',
+  'Production deploy refuses code that is not on origin/<default branch>',
+  !deployScript ? 'n/a' : gatesRelease ? 'ok' : 'drift',
+  !deployScript
+    ? 'no scripts/deploy-aw.mjs — this site does not deploy through the kit'
+    : gatesRelease
+      ? 'a production deploy needs a clean tree, a successful fetch and HEAD = origin/<default>; every deploy is stamped with its commit'
+      : '⚠ deploy-aw.mjs uploads whatever is checked out — an unpushed commit or an unmerged branch goes live, and the next deploy from the default branch silently undoes it. Copy scripts/deploy-aw.mjs and scripts/lib/release-gate.mjs from the current kit',
+);
+
 /* ── report ───────────────────────────────────────────────────────────────── */
 
 if (json) {

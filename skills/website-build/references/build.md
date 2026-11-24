@@ -511,8 +511,12 @@ Staging first, on a real host. Then the §7 verification matrix, then cutover **
    confirm it still reads as verified. File verification breaks the moment the file stops
    resolving, and losing verification loses the property's history.
 4. Full verification matrix against staging.
-5. Deploy production. **Read the bindings table in the deploy output** — it is the only visible
-   signal that the intended environment was built.
+5. **Merge to the default branch, push, then deploy production from it.** `npm run deploy:production`
+   refuses a dirty tree, a failed `git fetch` or a `HEAD` that is not `origin/<default>`, and stamps
+   the Worker version with the commit. Production deployed from a branch is silently undone by the
+   next deploy from the default branch; the 2026-11-23 AW audit found a contact form dead for five
+   days that way. **Read the bindings table in the deploy output** — it is the only visible signal
+   that the intended environment was built.
 6. Cut DNS over, and watch it rather than assuming: `dig +short` both apex and `www`.
 7. **Remove the staging route**, or staging becomes an indexable duplicate.
 8. Re-run the matrix against production — `robots.txt` must now allow, `noindex` must be gone.
@@ -522,7 +526,8 @@ Staging first, on a real host. Then the §7 verification matrix, then cutover **
     inbox they actually read.
 11. Restore the DNS TTL, and point an uptime monitor at a real page **and the form endpoint**.
 
-*Gate: production verified, staging route removed, one real lead delivered end to end.*
+*Gate: production verified, staging route removed, one real lead delivered end to end, and
+production equals `origin/<default>` — the live version's tag is a commit on the default branch.*
 
 ### 8b · First week
 The build is not finished at cutover — this is when the expensive failures surface, and all of
@@ -780,6 +785,7 @@ Not "the build passed." Every row verified against the **deployed** site.
 
 | Check | Passing |
 | --- | --- |
+| Live code | Production equals `origin/<default>`: deployed by `npm run deploy:production` from a clean checkout of the default branch, the Worker version tagged with that commit, no open `--allow-unmerged` record in `BUILD-STATE.md` |
 | Routes | Every inventoried URL returns 200 |
 | Redirects | Each legacy URL 301s to its *specific* equivalent and lands 200 |
 | 404 | Unknown paths return a real 404 status, not 200 |

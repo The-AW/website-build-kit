@@ -25,8 +25,15 @@ npm run console                              # console errors + failed requests,
 npm run shots -- --before https://old-site.com  # visual record, WHILE the old site is still up
 npm run extract                              # captured HTML → recon/extracted/*.md
 npm run deploy:production:dry-run
-npm run deploy:production -- --confirm-production
+npm run deploy:production -- --confirm-production   # only from a clean checkout equal to origin/<default>
 ```
+
+⚠ **Production equals `origin/<default branch>`.** Merge to the default branch, push, then deploy from
+it. `deploy:production` refuses a dirty tree, a failed `git fetch` or a `HEAD` that is not
+`origin/<default>`, and stamps every deploy (staging too) with `--tag <sha> --message "<branch> <sha>"`.
+A deploy from a branch is silently undone by the next deploy from the default branch: that kept one
+site's contact form dead for five days. `--allow-unmerged "<reason>"` is the emergency escape and
+writes itself into `BUILD-STATE.md`.
 
 Node **22.12+**. `.node-version` pins the version this was built against.
 

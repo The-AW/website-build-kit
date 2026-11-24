@@ -49,11 +49,15 @@ For `private_crm`, the agreed reusable contact endpoint is same-origin `POST /ap
 ## 3. Production release and rollback
 
 ```bash
+# merge the release PR on GitHub first
+git switch <default> && git pull --ff-only       # <default>: git ls-remote --symref origin HEAD
 npm run build:production
 npm run deploy:production:dry-run
 npm run deploy:production -- --confirm-production
 npm run verify -- https://<production-host>
 ```
+
+**Production equals `origin/<default branch>`.** Merge to the default branch, push, then deploy from it. `deploy:production` refuses unless the working tree is clean, `git fetch origin` succeeds and `HEAD` equals `origin/<default>` (read from the remote, never assumed to be `main`), and prints the command that fixes each case. Staging deploys from any branch. Every deploy, staging included, is stamped `wrangler deploy --tag <short sha> --message "<branch> <sha>"`, so `npx wrangler versions list --name <worker>` shows which commit is live. `--allow-unmerged "<reason>"` is the emergency escape: it warns and appends the reason, commit and date to `BUILD-STATE.md`, and the release is not done until a deploy from the default branch replaces it. The 2026-11-23 audit found two sites live from commits that existed on one Mac, one live from an unmerged PR, and one whose unmerged contact-form fix was silently overwritten by a later deploy from `main`; every one of those deploys was green.
 
 Production build/deploy refuses example or staging hosts, reused Worker names, an incomplete migration manifest, missing acceptance criteria, or a missing rollback snapshot/WordPress origin. `--confirm-production` is an explicit command guard, not a request for repeated approval: honor the active session's already-granted scope and do not insert new approval gates for the same authorized release.
 
