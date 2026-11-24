@@ -40,11 +40,15 @@ A configured `CLOUDFLARE_API_TOKEN` provided through BYOK is valid auth when `wr
 The code under `modules/contact/` remains a KV-only draft, not the existing-private-CRM integration, and is not proven end-to-end. A synthetic local adapter test verifies the hybrid route mechanics only; it does not prove hosted CRM delivery or real-browser form success. Before claiming contact completion, test the implemented adapter, privacy/retention, limits, failures and recovery with approved staging evidence. No email/Slack/Brevo provider is mandatory.
 
 ```bash
+# merge the release PR on GitHub first
+git switch <default> && git pull --ff-only       # <default>: git ls-remote --symref origin HEAD
 npm run build:production
 npm run deploy:production:dry-run
 npm run deploy:production -- --confirm-production
 npm run verify -- https://<production-host>
 ```
+
+**Production equals `origin/<default branch>`.** `deploy:production` refuses unless the working tree is clean, `git fetch origin` succeeds and `HEAD` equals `origin/<default>`; the refusal names the command that fixes it. Staging deploys from any branch. Every deploy is stamped `--tag <short sha> --message "<branch> <sha>"` (`npx wrangler versions list --name <worker>`). `--allow-unmerged "<reason>"` is for emergencies only: it warns and appends the reason, commit and date to `BUILD-STATE.md`, and the release stays open until a deploy from the default branch replaces it.
 
 The production deploy flag is an explicit technical guard. Honor authorization already granted for this session's scope; do not insert repeated approval requests, and do not extend the scope implicitly. Use one release candidate and one live writer per site.
 

@@ -159,6 +159,11 @@ does ship is the skeleton of the parts that take longest to get right:
   tests (`npm run test:turnstile`, `npm run test:origin`, `npm run test:form`) do not prove CRM delivery
 - **Environment derivation** — `aw-migration.json` supplies verified hosts and distinct Worker
   names; build/deploy guards refuse placeholders and cross-environment target reuse
+- **Production equals the default branch** — `deploy:production` refuses a dirty tree, a failed
+  `git fetch` or a `HEAD` that is not `origin/<default>`, and stamps every deploy with
+  `--tag <sha> --message "<branch> <sha>"`. Deploys straight from the working tree had put two sites
+  live on commits that existed on one Mac, and let a deploy from `main` undo an unmerged contact-form
+  fix for five days, every deploy green. `--allow-unmerged "<reason>"` is the logged escape
 - **Build guard** that refuses *any* build without an environment, because a bare build
   publishes `localhost` canonical tags cleanly and with no error. It keys on the command, not
   on `CI` — `npm run build` is the most reflexive command in npm, and that is exactly where the
@@ -234,9 +239,9 @@ does ship is the skeleton of the parts that take longest to get right:
   that is wrong about a whole country gets switched off
 - **`npm run check:drift`** — what a **delivered** site is behind on. Every other check here
   protects the next project; the template is copied, not linked, so a shipped site never receives
-  any of them. Eleven rows — AVIF, HEIC, a pipeline that drops files silently, hardcoded images,
-  binary source files, the CMS checks, the client guide, and an accessibility run that measures one
-  palette twice — reported and never fixed, because drift is a
+  any of them. Twelve rows — AVIF, HEIC, a pipeline that drops files silently, hardcoded images,
+  binary source files, the CMS checks, the client guide, an accessibility run that measures one
+  palette twice, and a production deploy that ships whatever is checked out — reported and never fixed, because drift is a
   decision waiting to be made, not an error. `--json` for many sites at once. The repair procedure
   lives in [site-runbooks](https://github.com/nurkamol/site-runbooks), which calls this rather than
   restating it
@@ -340,7 +345,7 @@ npm run deploy:staging:dry-run
 npm run deploy:staging
 npm run build:production
 npm run deploy:production:dry-run
-npm run deploy:production -- --confirm-production
+npm run deploy:production -- --confirm-production   # from a clean checkout equal to origin/<default>
 ```
 
 Node 22.12+. The generated starter deliberately refuses placeholder hosts/Workers and missing

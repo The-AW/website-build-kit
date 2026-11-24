@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-11-24 — 0.1.26: production deploys only what GitHub's default branch has
+
+Released as 0.1.26 (`create/package.json`). Owner decision E-3 a; from the 2026-11-23 audit (E-1): emprestfin and
+1posicao were live from commits that existed on one Mac, criancasnaplateia from an unmerged PR, and on
+plastica-beleza a later deploy from `main` silently overwrote an unmerged fix, so the contact form was dead for five
+days. Every one of those deploys was green, because `deploy-aw.mjs` uploaded the working tree with no git check.
+
+* **`deploy:production` refuses unless production would equal `origin/<default branch>`**
+  (`scripts/lib/release-gate.mjs`, called first in `deploy-aw.mjs`, before the build): the working tree is clean
+  (`git status --porcelain --untracked-files=all` prints nothing), `git fetch origin` succeeds, and `HEAD` **equals**
+  `origin/<default>`. The default branch is read from the remote (`git ls-remote --symref origin HEAD`, then
+  `refs/remotes/origin/HEAD`), never assumed to be `main`. Ahead (unpushed), behind (a rollback past merged work)
+  and beside (an unmerged PR) each refuse with the command that fixes it. A production dry-run prints what a real
+  deploy would refuse and writes nothing.
+* **`--allow-unmerged "<reason>"`** is the one escape: a loud warning, then after the deploy the reason, commit,
+  `origin/<default>` and date are appended to `BUILD-STATE.md`. Without a reason it refuses.
+* **Every deploy is stamped**, staging included: `wrangler deploy --tag <12-char sha>[-dirty] --message "<branch>
+  <sha>[ +uncommitted][ UNMERGED]"` (Wrangler limits: tag 25, message 100 characters). `npx wrangler versions list
+  --name <worker>` now answers "is live equal to main?" without an audit. Staging still deploys from any branch.
+* **`check:drift` D10** reports a site whose `deploy-aw.mjs` has no git gate.
+* Docs: `production-cutover.md` §3.3 "merge to the default branch, push, then deploy from it" and a definition of
+  done (production equals `origin/<default>`); the same step in `aw-migration-process.md` §3, the checklist,
+  `build.md` §8 and §7, and the template's `CLAUDE.md` and `docs/runbook.md`.
+* `test:gates` covers clean+equal (allowed and stamped, default branch `trunk`), dirty, staged-only, ahead, feature
+  branch, behind, fetch failure, not a repository, the escape (allowed and recorded), a reasonless escape, the
+  production dry-run and staging from a dirty feature branch.
+
+**Existing sites adopt it by copying files; there is no sync command.**
+
+1. In the site repo, on a branch from `origin/<default>`: `node scripts/check-drift.mjs` after copying the kit's
+   `template/scripts/check-drift.mjs` in; row D10 says whether the site needs this.
+2. If the site's `scripts/deploy-aw.mjs` is byte-identical to the kit's previous copy (unchanged from 2026-11-17 to
+   0.1.25: `git show 7209bf5:template/scripts/deploy-aw.mjs`; most AW sites carry exactly that file): copy `template/scripts/deploy-aw.mjs` and
+   `template/scripts/lib/release-gate.mjs` over. Otherwise (an older or customised deploy script): copy
+   `lib/release-gate.mjs` and apply this release's `deploy-aw.mjs` hunks by hand (the import, the
+   `--allow-unmerged` argv loop, the gate block after `--confirm-production`, `...stamp` on the deploy args and the
+   `recordUnmerged` call after it).
+3. `npm run deploy:production:dry-run` on the branch must print "a real deploy would refuse"; merge the PR, then the
+   next production deploy from the default branch is the proof (its version tag is the merge commit).
+4. A workflow that deploys production (`monthly-rebuild.yml`) needs nothing: `actions/checkout` of the default branch
+   is a clean checkout of `origin/<default>`. One that calls `wrangler deploy` directly gets no gate and no stamp.
+
 ## 2026-11-23 — 0.1.25: a 404 never runs a Worker (Workers Free budget)
 
 Released as 0.1.25 (`create/package.json`). Owner decision 68; the fix was proven on 123achei (PR #3) first.
